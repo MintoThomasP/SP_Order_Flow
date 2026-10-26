@@ -96,4 +96,5 @@ class ScanEventLogViewSet(viewsets.ReadOnlyModelViewSet):
         station = self.request.query_params.get("station")
         if station:
             qs = qs.filter(station__iexact=station)
-        return qs[:50]
+        return qs
+

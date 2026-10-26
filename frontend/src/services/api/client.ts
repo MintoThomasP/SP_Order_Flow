@@ -21,10 +21,84 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Response interceptor
+// Response interceptor with auto-refresh and graceful fallback
+let isRefreshing = false;
+let failedQueue: Array<{
+  resolve: (value?: any) => void;
+  reject: (reason?: any) => void;
+}> = [];
+
+const processQueue = (error: any, token: string | null = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
 apiClient.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
+    const originalRequest = error.config;
+
+    // Check if 401 Unauthorized and not already retried
+    if (
+      error.response?.status === 401 &&
+      originalRequest &&
+      !originalRequest._retry &&
+      !originalRequest.url?.includes("/auth/token/")
+    ) {
+      originalRequest._retry = true;
+
+      if (typeof window !== "undefined") {
+        const refreshToken = localStorage.getItem("silverpoint_refresh_token");
+
+        if (refreshToken) {
+          if (isRefreshing) {
+            return new Promise((resolve, reject) => {
+              failedQueue.push({ resolve, reject });
+            })
+              .then((token) => {
+                originalRequest.headers.Authorization = `Bearer ${token}`;
+                return apiClient(originalRequest);
+              })
+              .catch((err) => Promise.reject(err));
+          }
+
+          isRefreshing = true;
+
+          try {
+            const res = await axios.post(`${API_BASE_URL}/auth/token/refresh/`, {
+              refresh: refreshToken,
+            });
+            const newAccessToken = res.data.access;
+            localStorage.setItem("silverpoint_access_token", newAccessToken);
+            originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+
+            processQueue(null, newAccessToken);
+            return apiClient(originalRequest);
+          } catch (refreshErr) {
+            processQueue(refreshErr, null);
+            localStorage.removeItem("silverpoint_access_token");
+            localStorage.removeItem("silverpoint_refresh_token");
+            localStorage.removeItem("silverpoint_user");
+            delete originalRequest.headers.Authorization;
+            return apiClient(originalRequest);
+          } finally {
+            isRefreshing = false;
+          }
+        } else {
+          // No refresh token available, clean up stale access token and retry
+          localStorage.removeItem("silverpoint_access_token");
+          delete originalRequest.headers.Authorization;
+          return apiClient(originalRequest);
+        }
+      }
+    }
+
     const customError = {
       message:
         error.response?.data?.detail ||
