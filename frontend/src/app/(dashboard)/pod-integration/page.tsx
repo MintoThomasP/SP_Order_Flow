@@ -20,7 +20,6 @@ import {
   Sliders,
   Check,
   Lock,
-  ShoppingBag,
   Cpu,
   Server,
   ArrowRight,
@@ -45,7 +44,7 @@ import { Table, Column } from "@/components/ui/table";
 import { StatCard } from "@/components/ui/stat-card";
 import { Modal } from "@/components/ui/modal";
 
-type PODChannel = "printify" | "peecho" | "shopify" | "custom";
+type PODChannel = "printify" | "peecho" | "custom";
 
 export default function PODIntegrationsPage() {
   const queryClient = useQueryClient();
@@ -533,7 +532,7 @@ export default function PODIntegrationsPage() {
       </div>
 
       {/* POD Channels Selector Bar */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {/* Channel 1: Printify (Active / Production Ready) */}
         <button
           type="button"
@@ -598,38 +597,7 @@ export default function PODIntegrationsPage() {
           </div>
         </button>
 
-        {/* Channel 3: Shopify POD */}
-        <button
-          type="button"
-          onClick={() => setSelectedChannel("shopify")}
-          className={`p-4 rounded-2xl border text-left transition-all relative overflow-hidden flex flex-col justify-between ${
-            selectedChannel === "shopify"
-              ? "bg-white border-[#0073EA] shadow-md shadow-[#0073EA]/10 ring-2 ring-[#0073EA]/20"
-              : "bg-white/80 border-slate-200/80 hover:border-slate-300 hover:bg-white"
-          }`}
-        >
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200/80 flex items-center justify-center text-emerald-600">
-                <ShoppingBag className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">Shopify POD Store</h3>
-                <span className="text-[11px] text-slate-500">E-Commerce Merchant Webhook</span>
-              </div>
-            </div>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-medium border border-slate-200">
-              Modular
-            </span>
-          </div>
-
-          <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-            <span>Protocol: <strong className="text-slate-700 font-mono">REST Webhook</strong></span>
-            <span className="text-slate-400">Ready to Bind</span>
-          </div>
-        </button>
-
-        {/* Channel 4: Custom REST Gateway */}
+        {/* Channel 3: Custom REST Gateway */}
         <button
           type="button"
           onClick={() => setSelectedChannel("custom")}
@@ -646,7 +614,7 @@ export default function PODIntegrationsPage() {
               </div>
               <div>
                 <h3 className="text-sm font-bold text-slate-900">Custom POD Gateway</h3>
-                <span className="text-[11px] text-slate-500">Cloudprinter / Custom ERP</span>
+                <span className="text-[11px] text-slate-500">Direct OpenAPI v3 / In-House ERP</span>
               </div>
             </div>
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-medium border border-slate-200">
@@ -1446,52 +1414,7 @@ export default function PODIntegrationsPage() {
       )}
 
       {/* =======================================================================
-          TAB 3: SHOPIFY POD STORE
-          ======================================================================= */}
-      {selectedChannel === "shopify" && (
-        <div className="p-8 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-6">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600">
-              <ShoppingBag className="w-6 h-6" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">Shopify Print-On-Demand Webhook App</h2>
-              <p className="text-xs text-slate-500">
-                Directly stream paid e-commerce customer orders into the automated print production queue.
-              </p>
-            </div>
-          </div>
-
-          <div className="p-6 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-4 text-xs">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="font-semibold text-slate-700">Shopify Webhook Callback URL</label>
-                <div className="h-10 px-3.5 rounded-xl bg-white border border-slate-200 text-slate-800 flex items-center font-mono">
-                  http://127.0.0.1:8001/api/v1/orders/webhook/shopify/
-                </div>
-              </div>
-              <div className="space-y-1">
-                <label className="font-semibold text-slate-700">Order Trigger Topic</label>
-                <div className="h-10 px-3.5 rounded-xl bg-white border border-slate-200 text-slate-800 flex items-center font-mono">
-                  orders/paid, orders/fulfilled
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center justify-between">
-              <div>
-                <span className="font-bold">Ready for Store Binding:</span> Create a custom App in your Shopify Admin and paste the Webhook URL above to start forwarding print orders to Silver Point POD.
-              </div>
-              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white shrink-0">
-                Connect Shopify Store
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* =======================================================================
-          TAB 4: CUSTOM POD GATEWAY
+          TAB 3: CUSTOM POD GATEWAY
           ======================================================================= */}
       {selectedChannel === "custom" && (
         <div className="p-8 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-6">
