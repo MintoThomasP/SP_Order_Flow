@@ -61,13 +61,13 @@ export const NAVIGATION_ITEMS: NavigationItem[] = [
     description: "View monthly customer invoices, price lists, and quote calculator.",
   },
   {
-    name: "Peecho Settings",
+    name: "POD Integration",
     slug: "peecho",
     path: "/peecho",
     icon: "Globe2",
     badge: "API",
     group: "Integrations",
-    description: "Manage API keys, connection settings, and order notifications.",
+    description: "Manage Peecho and third-party print-on-demand connections, API credentials, and webhooks.",
   },
   {
     name: "Staff Accounts",
