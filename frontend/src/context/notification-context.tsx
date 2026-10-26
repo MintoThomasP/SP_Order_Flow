@@ -38,7 +38,7 @@ const INITIAL_NOTIFICATIONS: AppNotification[] = [
     category: "STATUS_SYNC",
     timestamp: new Date(Date.now() - 3 * 60 * 1000).toISOString(),
     read: false,
-    link: "/peecho",
+    link: "/pod-integration",
   },
   {
     id: "init-2",

@@ -328,7 +328,7 @@ export const Header: React.FC = () => {
                   <span className="font-medium">Peecho Auto-Sync Active</span>
                 </div>
                 <Link
-                  href="/peecho"
+                  href="/pod-integration"
                   onClick={() => setIsNotificationsOpen(false)}
                   className="font-semibold text-[#0073EA] hover:underline flex items-center gap-1"
                 >
