@@ -16,6 +16,8 @@ export const ordersApi = {
     status?: string;
     urgency?: "critical" | "urgent" | "normal" | "breached" | string;
     search?: string;
+    source?: string;
+    is_external_pod?: boolean;
   }): Promise<PaginatedResponse<Order>> => {
     const res = await apiClient.get<PaginatedResponse<Order>>("/orders/", {
       params,

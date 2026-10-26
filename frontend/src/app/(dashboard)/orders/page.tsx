@@ -28,6 +28,8 @@ import {
   X,
   Bell,
   Check,
+  Printer,
+  Cpu,
 } from "lucide-react";
 import { ordersApi, lookupsApi, Order, OrderItem, EntityStatus, UserAuditLog } from "@/services/api";
 import { Card } from "@/components/ui/card";
@@ -116,7 +118,8 @@ export default function OrdersPage() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [urgencyFilter, setUrgencyFilter] = useState<string>("");
-  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [sourceFilter, setSourceFilter] = useState<string>("ALL");
   const [dateFilter, setDateFilter] = useState<string>("ALL");
   const [sortBy, setSortBy] = useState<"sla" | "newest" | "amount" | "order_number">("sla");
 
@@ -141,12 +144,13 @@ export default function OrdersPage() {
 
   // Queries - Real-time polling every 5 seconds for instant sync
   const { data: ordersData, isLoading: ordersLoading, refetch: refetchOrders } = useQuery({
-    queryKey: ["orders", searchQuery, urgencyFilter, statusFilter],
+    queryKey: ["orders", searchQuery, urgencyFilter, statusFilter, sourceFilter],
     queryFn: () =>
       ordersApi.getOrders({
         search: searchQuery || undefined,
         urgency: urgencyFilter || undefined,
-        status: statusFilter || undefined,
+        status: statusFilter === "ALL" ? undefined : statusFilter || undefined,
+        source: sourceFilter === "ALL" ? undefined : sourceFilter,
       }),
     refetchInterval: 5000,
   });
@@ -335,10 +339,46 @@ export default function OrdersPage() {
             {ord.order_number}
           </span>
           <span className="font-mono text-[11px] text-slate-400">
-            {ord.peecho_order_id}
+            {ord.peecho_order_id || ord.external_pod_order_id || "Direct Job"}
           </span>
         </div>
       ),
+    },
+    {
+      header: "Channel",
+      cell: (ord) => {
+        const src = (ord.order_source || "peecho").toLowerCase();
+        if (src === "printify") {
+          return (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <Printer className="w-3 h-3 text-emerald-600" />
+              Printify
+            </span>
+          );
+        }
+        if (src === "custom_api" || src === "custom") {
+          return (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+              <Cpu className="w-3 h-3 text-purple-600" />
+              Custom API
+            </span>
+          );
+        }
+        if (src === "manual" || src === "internal") {
+          return (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-300">
+              <Layers className="w-3 h-3 text-slate-500" />
+              In-House
+            </span>
+          );
+        }
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-[#0073EA] border border-blue-200">
+            <Globe2 className="w-3 h-3 text-[#0073EA]" />
+            Peecho
+          </span>
+        );
+      },
     },
     {
       header: "Customer & Address",
@@ -592,6 +632,35 @@ export default function OrdersPage() {
           </div>
         </div>
 
+        {/* Origin Channel Filter Tabs */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100 text-xs">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-slate-400 font-semibold uppercase text-[10px] mr-1 flex items-center gap-1">
+              <Filter className="w-3 h-3" /> Origin Channel:
+            </span>
+            {[
+              { id: "ALL", label: "All Sources" },
+              { id: "printify", label: "Printify POD", icon: <Printer className="w-3 h-3 text-emerald-600" /> },
+              { id: "peecho", label: "Peecho POD", icon: <Globe2 className="w-3 h-3 text-[#0073EA]" /> },
+              { id: "custom_api", label: "Custom API", icon: <Cpu className="w-3 h-3 text-purple-600" /> },
+              { id: "manual", label: "In-House Manual", icon: <Layers className="w-3 h-3 text-slate-500" /> },
+            ].map((ch) => (
+              <button
+                key={ch.id}
+                onClick={() => setSourceFilter(ch.id)}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-all cursor-pointer ${
+                  sourceFilter === ch.id
+                    ? "bg-slate-900 text-white border-slate-900 shadow-xs font-bold"
+                    : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                }`}
+              >
+                {ch.icon}
+                {ch.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* SLA & Status Filter Row */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100 text-xs">
           {/* SLA Pills */}
@@ -625,7 +694,7 @@ export default function OrdersPage() {
               onChange={(e) => setStatusFilter(e.target.value)}
               className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 focus:outline-none"
             >
-              <option value="">All Statuses</option>
+              <option value="ALL">All Statuses</option>
               {statusesData?.results?.map((st) => (
                 <option key={st.id} value={st.code}>
                   {st.name} ({st.code})
@@ -714,7 +783,9 @@ export default function OrdersPage() {
         title={
           <div className="flex items-center gap-2">
             <span>{selectedOrder?.order_number}</span>
-            <span className="text-xs text-slate-400 font-mono">[{selectedOrder?.peecho_order_id}]</span>
+            <span className="text-xs text-slate-400 font-mono">
+              [{selectedOrder?.peecho_order_id || selectedOrder?.external_pod_order_id || "Direct Order"}]
+            </span>
           </div>
         }
         description="Customer information, book specifications, artwork files, and complete order history."
@@ -783,6 +854,20 @@ export default function OrdersPage() {
                   </div>
 
                   <div>
+                    <p className="text-[11px] text-slate-400 font-medium">Origin Channel:</p>
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <span className="font-semibold text-slate-800 capitalize">
+                        {selectedOrder.order_source || "Peecho"}
+                      </span>
+                      {selectedOrder.is_external_pod && (
+                        <span className="text-[10px] text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded font-mono">
+                          External POD
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
                     <p className="text-[11px] text-slate-400 font-medium">Delivery Deadline:</p>
                     <div className="mt-1">
                       <SlaCountdownClock deadlineStr={selectedOrder.sla_deadline} />
@@ -790,8 +875,15 @@ export default function OrdersPage() {
                   </div>
 
                   <div>
-                    <p className="text-[11px] text-slate-400 font-medium">Courier:</p>
-                    <p className="font-semibold text-slate-800 mt-1">{selectedOrder.carrier_preference}</p>
+                    <p className="text-[11px] text-slate-400 font-medium">Courier & Tracking:</p>
+                    <p className="font-semibold text-slate-800 mt-1">
+                      {selectedOrder.carrier_preference}
+                      {selectedOrder.tracking_number && (
+                        <span className="ml-1 text-[11px] font-mono text-emerald-600">
+                          ({selectedOrder.tracking_number})
+                        </span>
+                      )}
+                    </p>
                   </div>
                 </div>
 

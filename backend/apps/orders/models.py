@@ -103,8 +103,8 @@ class Order(BaseModel):
     ORDER_SOURCE_CHOICES = [
         ("peecho", "Peecho POD"),
         ("printify", "Printify POD"),
+        ("custom_api", "Custom POD / REST API"),
         ("manual", "Internal / Manual"),
-        ("shopify", "Shopify Store"),
     ]
     order_source = models.CharField(
         max_length=32,

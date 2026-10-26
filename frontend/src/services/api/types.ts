@@ -99,6 +99,10 @@ export interface Order extends BaseModel {
   total_items_count: number;
   total_amount: string | number;
   currency: string;
+  order_source?: "peecho" | "printify" | "custom_api" | "manual" | string;
+  is_external_pod?: boolean;
+  external_pod_order_id?: string | null;
+  tracking_number?: string;
   peecho_metadata: Record<string, any>;
   items: OrderItem[];
 }

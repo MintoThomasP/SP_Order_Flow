@@ -154,7 +154,14 @@ class OrderViewSet(viewsets.ModelViewSet):
     queryset = Order.objects.select_related("status").prefetch_related("items").all()
     serializer_class = OrderSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ["order_number", "peecho_order_id", "customer_name", "customer_email"]
+    search_fields = [
+        "order_number",
+        "peecho_order_id",
+        "external_pod_order_id",
+        "customer_name",
+        "customer_email",
+        "order_source",
+    ]
     ordering_fields = ["sla_deadline", "created_at", "total_amount", "order_number"]
     ordering = ["sla_deadline"]
 
@@ -167,6 +174,21 @@ class OrderViewSet(viewsets.ModelViewSet):
                 qs = qs.filter(status__code__iexact=statuses[0])
             elif len(statuses) > 1:
                 qs = qs.filter(status__code__in=statuses)
+
+        source_param = self.request.query_params.get("source") or self.request.query_params.get("order_source")
+        if source_param and source_param.lower() != "all":
+            sources = [s.strip().lower() for s in source_param.split(",") if s.strip()]
+            if len(sources) == 1:
+                qs = qs.filter(order_source__iexact=sources[0])
+            elif len(sources) > 1:
+                qs = qs.filter(order_source__in=sources)
+
+        is_external_pod = self.request.query_params.get("is_external_pod")
+        if is_external_pod is not None:
+            if is_external_pod.lower() in ("true", "1"):
+                qs = qs.filter(is_external_pod=True)
+            elif is_external_pod.lower() in ("false", "0"):
+                qs = qs.filter(is_external_pod=False)
 
         sla_urgency = self.request.query_params.get("urgency")
         now = timezone.now()
