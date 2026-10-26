@@ -59,13 +59,25 @@ export const ordersApi = {
     return res.data;
   },
 
-  // Trigger simulated Peecho webhook
+  // Trigger simulated multi-channel order creation
+  simulateOrder: async (params?: {
+    priority?: "RUSH_8H" | "EXPRESS_24H" | "STANDARD_72H";
+    source?: "printify" | "peecho" | "custom_api" | "manual";
+  }): Promise<{ message: string; channel?: string; order: Order; log_status?: string }> => {
+    const res = await apiClient.post<{ message: string; channel?: string; order: Order; log_status?: string }>(
+      "/orders/simulate/",
+      params || {}
+    );
+    return res.data;
+  },
+
+  // Backwards-compatible Peecho webhook simulation
   simulatePeechoWebhook: async (
     priority?: "RUSH_8H" | "EXPRESS_24H" | "STANDARD_72H"
-  ): Promise<{ message: string; order: Order; log_status: string }> => {
-    const res = await apiClient.post<{ message: string; order: Order; log_status: string }>(
+  ): Promise<{ message: string; channel?: string; order: Order; log_status: string }> => {
+    const res = await apiClient.post<{ message: string; channel?: string; order: Order; log_status: string }>(
       "/peecho/simulate-webhook/",
-      { priority }
+      { priority, source: "peecho" }
     );
     return res.data;
   },

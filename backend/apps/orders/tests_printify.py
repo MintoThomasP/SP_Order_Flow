@@ -262,3 +262,46 @@ class PrintifyIntegrationTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn("Invalid JSON format", response.json()["error"])
+
+    # -------------------------------------------------------------------------
+    # Test Group 6: Multi-Channel Order Simulation Endpoint
+    # -------------------------------------------------------------------------
+    def test_simulate_printify_order(self):
+        response = self.client.post(
+            "/api/v1/orders/simulate/",
+            data={"source": "printify", "priority": "RUSH_8H"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data["channel"], "Printify POD")
+        self.assertEqual(data["order"]["order_source"], "printify")
+        self.assertTrue(data["order"]["is_external_pod"])
+        self.assertTrue(data["order"]["external_pod_order_id"].startswith("PF-"))
+        self.assertEqual(data["order"]["sla_priority"], "RUSH_8H")
+
+    def test_simulate_custom_api_order(self):
+        response = self.client.post(
+            "/api/v1/orders/simulate/",
+            data={"source": "custom_api", "priority": "EXPRESS_24H"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data["channel"], "Custom POD / REST API")
+        self.assertEqual(data["order"]["order_source"], "custom_api")
+        self.assertFalse(data["order"]["is_external_pod"])
+        self.assertTrue(data["order"]["external_pod_order_id"].startswith("API-EXT-"))
+
+    def test_simulate_manual_order(self):
+        response = self.client.post(
+            "/api/v1/orders/simulate/",
+            data={"source": "manual", "priority": "STANDARD_72H"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data["channel"], "Internal / Manual")
+        self.assertEqual(data["order"]["order_source"], "manual")
+        self.assertFalse(data["order"]["is_external_pod"])
+        self.assertIsNone(data["order"]["external_pod_order_id"])

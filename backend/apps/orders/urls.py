@@ -5,6 +5,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from apps.orders.views import (
     OrderViewSet,
+    OrderSimulateView,
     PeechoWebhookView,
     PeechoSimulateWebhookView,
     PeechoPayloadLogViewSet,
@@ -41,6 +42,9 @@ urlpatterns = [
     path("peecho/simulate-webhook/", PeechoSimulateWebhookView.as_view(), name="peecho-simulate-webhook"),
     path("peecho/config/", PeechoConfigView.as_view(), name="peecho-config"),
     path("peecho/test-connection/", PeechoTestConnectionView.as_view(), name="peecho-test-connection"),
+
+    # Orders Simulation (Multi-Channel)
+    path("orders/simulate/", OrderSimulateView.as_view(), name="order-simulate"),
 
     # REST ViewSets
     path("", include(router.urls)),

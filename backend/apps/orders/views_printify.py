@@ -513,7 +513,7 @@ class PrintifySimulateWebhookView(APIView):
         if order_number:
             order = Order.objects.filter(order_number=order_number).first()
         if not order:
-            order = Order.objects.filter(is_external_pod=True, order_source="PRINTIFY").first()
+            order = Order.objects.filter(is_external_pod=True, order_source__iexact="printify").first()
         if not order:
             order = Order.objects.first()
 

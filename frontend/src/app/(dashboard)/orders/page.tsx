@@ -132,6 +132,7 @@ export default function OrdersPage() {
   const [orderModalTab, setOrderModalTab] = useState<"details" | "history">("details");
   const [isSimulateModalOpen, setIsSimulateModalOpen] = useState(false);
   const [simulatePriority, setSimulatePriority] = useState<"RUSH_8H" | "EXPRESS_24H" | "STANDARD_72H">("RUSH_8H");
+  const [simulateSource, setSimulateSource] = useState<"printify" | "peecho" | "custom_api" | "manual">("printify");
   const [transitionStatusCode, setTransitionStatusCode] = useState("");
   const [transitionComment, setTransitionComment] = useState("");
 
@@ -214,16 +215,28 @@ export default function OrdersPage() {
 
   // Mutations
   const simulateMutation = useMutation({
-    mutationFn: (priority: "RUSH_8H" | "EXPRESS_24H" | "STANDARD_72H") =>
-      ordersApi.simulatePeechoWebhook(priority),
+    mutationFn: (params: {
+      priority: "RUSH_8H" | "EXPRESS_24H" | "STANDARD_72H";
+      source: "printify" | "peecho" | "custom_api" | "manual";
+    }) => ordersApi.simulateOrder(params),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
       queryClient.invalidateQueries({ queryKey: ["orders-metrics"] });
+      queryClient.invalidateQueries({ queryKey: ["printify-logs"] });
+      queryClient.invalidateQueries({ queryKey: ["peecho-logs"] });
       setIsSimulateModalOpen(false);
       if (data.order) {
         setNewOrderAlert(data.order);
+        const sourceLabel =
+          data.order.order_source === "printify"
+            ? "Printify POD"
+            : data.order.order_source === "peecho"
+            ? "Peecho POD"
+            : data.order.order_source === "custom_api"
+            ? "Custom API"
+            : "In-House Manual";
         addNotification({
-          title: `New Peecho Order: ${data.order.order_number}`,
+          title: `New ${sourceLabel} Order: ${data.order.order_number}`,
           message: `Customer: ${data.order.customer_name}. SLA: ${data.order.sla_priority?.replace(/_/g, " ") || "Standard"}.`,
           type: "info",
           category: "ORDER_INCOMING",
@@ -715,12 +728,12 @@ export default function OrdersPage() {
         />
       </Card>
 
-      {/* MODAL: CREATE TEST ORDER */}
+      {/* MODAL: CREATE MULTI-CHANNEL ORDER */}
       <Modal
         isOpen={isSimulateModalOpen}
         onClose={() => setIsSimulateModalOpen(false)}
-        title="Create Test Order"
-        description="Creates a realistic test order in the system to verify workflow and delivery deadlines."
+        title="Create Order"
+        description="Select the origin channel and SLA target to simulate or ingest an inbound order."
         footer={
           <>
             <Button variant="outline" size="sm" onClick={() => setIsSimulateModalOpen(false)}>
@@ -729,7 +742,12 @@ export default function OrdersPage() {
             <Button
               size="sm"
               isLoading={simulateMutation.isPending}
-              onClick={() => simulateMutation.mutate(simulatePriority)}
+              onClick={() =>
+                simulateMutation.mutate({
+                  priority: simulatePriority,
+                  source: simulateSource,
+                })
+              }
               className="bg-[#0073EA] hover:bg-[#0060B9]"
             >
               Create Order
@@ -738,9 +756,76 @@ export default function OrdersPage() {
         }
       >
         <div className="space-y-4 text-xs">
+          {/* Channel Selector */}
           <div>
             <label className="block font-semibold text-slate-700 mb-1.5">
-              Select Delivery Speed:
+              Select Origin Channel:
+            </label>
+            <div className="grid grid-cols-2 gap-2.5">
+              {[
+                {
+                  id: "printify",
+                  name: "Printify POD",
+                  desc: "Apparel, mugs & merchandise via Printify REST API",
+                  icon: Printer,
+                  colorClass: "text-emerald-600 bg-emerald-50 border-emerald-200",
+                  activeBorder: "border-emerald-500 bg-emerald-50/60 ring-1 ring-emerald-500",
+                },
+                {
+                  id: "peecho",
+                  name: "Peecho POD",
+                  desc: "Hardcover photobooks & magazines via Peecho webhook",
+                  icon: Globe2,
+                  colorClass: "text-[#0073EA] bg-blue-50 border-blue-200",
+                  activeBorder: "border-[#0073EA] bg-blue-50/60 ring-1 ring-[#0073EA]",
+                },
+                {
+                  id: "custom_api",
+                  name: "Custom POD / API",
+                  desc: "B2B client gateway & fine art giclée prints",
+                  icon: Cpu,
+                  colorClass: "text-purple-600 bg-purple-50 border-purple-200",
+                  activeBorder: "border-purple-500 bg-purple-50/60 ring-1 ring-purple-500",
+                },
+                {
+                  id: "manual",
+                  name: "In-House / Manual",
+                  desc: "Shop-floor CSR jobs, brochures & roll-up banners",
+                  icon: Layers,
+                  colorClass: "text-slate-600 bg-slate-100 border-slate-300",
+                  activeBorder: "border-slate-700 bg-slate-100 ring-1 ring-slate-700",
+                },
+              ].map((channel) => {
+                const IconComponent = channel.icon;
+                const isSelected = simulateSource === channel.id;
+                return (
+                  <button
+                    key={channel.id}
+                    type="button"
+                    onClick={() => setSimulateSource(channel.id as any)}
+                    className={`p-3 rounded-xl border text-left transition-all ${
+                      isSelected
+                        ? channel.activeBorder
+                        : "border-slate-200 bg-slate-50/50 hover:bg-slate-50"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className={`p-1 rounded-md border ${channel.colorClass}`}>
+                        <IconComponent className="w-3.5 h-3.5" />
+                      </div>
+                      <p className="font-bold text-slate-900 text-xs">{channel.name}</p>
+                    </div>
+                    <p className="text-[11px] text-slate-500 leading-tight">{channel.desc}</p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Delivery Speed / SLA */}
+          <div>
+            <label className="block font-semibold text-slate-700 mb-1.5">
+              Select Delivery Speed & SLA:
             </label>
             <div className="grid grid-cols-3 gap-2.5">
               {[
@@ -765,13 +850,39 @@ export default function OrdersPage() {
             </div>
           </div>
 
+          {/* Dynamic Summary */}
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1 font-mono text-[11px] text-slate-600">
             <p className="font-semibold text-slate-700 font-sans">Automated Steps on Order Creation:</p>
-            <p>✓ Checks for duplicate orders</p>
-            <p>✓ Sets initial status to Received</p>
-            <p>✓ Calculates delivery deadline</p>
-            <p>✓ Prepares artwork files for review</p>
-            <p>✓ Shows notification to team</p>
+            {simulateSource === "printify" && (
+              <>
+                <p>✓ Generates Printify external order ID (e.g. PF-928174)</p>
+                <p>✓ Assigns Printify catalog product & variant mappings</p>
+                <p>✓ Creates Printify Payload Log entry for audit</p>
+                <p>✓ Sets SLA deadline and initial Received status</p>
+              </>
+            )}
+            {simulateSource === "peecho" && (
+              <>
+                <p>✓ Simulates inbound Peecho webhook payload</p>
+                <p>✓ Ingests photobook / magazine line items & artwork URLs</p>
+                <p>✓ Records SHA-256 payload log in Peecho Ingestion Logs</p>
+                <p>✓ Sets SLA deadline and initial Received status</p>
+              </>
+            )}
+            {simulateSource === "custom_api" && (
+              <>
+                <p>✓ Simulates B2B REST client payload ingestion</p>
+                <p>✓ Attaches external API reference ID & custom artwork specs</p>
+                <p>✓ Sets SLA deadline and initial Received status</p>
+              </>
+            )}
+            {simulateSource === "manual" && (
+              <>
+                <p>✓ Simulates shop-floor walk-in / CSR internal order ticket</p>
+                <p>✓ Provisions in-house printing & finishing specifications</p>
+                <p>✓ Sets SLA deadline and initial Received status</p>
+              </>
+            )}
           </div>
         </div>
       </Modal>
