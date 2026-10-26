@@ -95,8 +95,42 @@ class Order(BaseModel):
     peecho_order_id = models.CharField(
         max_length=128,
         unique=True,
+        null=True,
+        blank=True,
         db_index=True,
         help_text="Unique external Peecho Order Reference ID.",
+    )
+    ORDER_SOURCE_CHOICES = [
+        ("peecho", "Peecho POD"),
+        ("printify", "Printify POD"),
+        ("manual", "Internal / Manual"),
+        ("shopify", "Shopify Store"),
+    ]
+    order_source = models.CharField(
+        max_length=32,
+        choices=ORDER_SOURCE_CHOICES,
+        default="peecho",
+        db_index=True,
+        help_text="Origin channel or external POD vendor for this order.",
+    )
+    is_external_pod = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Flag indicating if the order is routed to an external POD partner.",
+    )
+    external_pod_order_id = models.CharField(
+        max_length=128,
+        blank=True,
+        null=True,
+        db_index=True,
+        help_text="External POD order identifier from vendor (e.g. Printify order ID).",
+    )
+    tracking_number = models.CharField(
+        max_length=128,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Carrier parcel tracking number code.",
     )
     customer_name = models.CharField(
         max_length=255,
@@ -180,6 +214,33 @@ class OrderItem(BaseModel):
         max_length=128,
         blank=True,
         help_text="Peecho line item identifier.",
+    )
+    external_item_id = models.CharField(
+        max_length=128,
+        blank=True,
+        default="",
+        help_text="External line item ID from POD partner.",
+    )
+    printify_product_id = models.CharField(
+        max_length=128,
+        blank=True,
+        default="",
+        help_text="Printify catalog product ID.",
+    )
+    printify_variant_id = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Printify Variant ID.",
+    )
+    printify_print_provider_id = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Printify Print Provider ID.",
+    )
+    printify_blueprint_id = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Printify Blueprint Catalog ID.",
     )
     product_type = models.CharField(
         max_length=128,
@@ -314,4 +375,65 @@ class PeechoIntegrationConfig(BaseModel):
 
     def __str__(self):
         return f"Peecho Config ({self.api_base_url}) - {'Sandbox' if self.is_sandbox else 'Production'}"
+
+
+class PrintifyPayloadLog(models.Model):
+    """
+    Immutable audit log of all incoming Printify webhook event notifications.
+    """
+    STATUS_CHOICES = [
+        ("RECEIVED", "Received"),
+        ("PROCESSED", "Processed & Ingested"),
+        ("IGNORED", "Event Ignored"),
+        ("INVALID_SIGNATURE", "Invalid Webhook Signature"),
+        ("FAILED", "Processing Failed"),
+    ]
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+    printify_order_id = models.CharField(
+        max_length=128,
+        db_index=True,
+        blank=True,
+        help_text="Printify Order Reference extracted from webhook.",
+    )
+    event_type = models.CharField(
+        max_length=128,
+        db_index=True,
+        help_text="Printify event topic (e.g. order:shipment:created, order:updated, order:sent-to-production).",
+    )
+    raw_payload = models.JSONField(
+        default=dict,
+        help_text="Exact raw JSON payload received from Printify.",
+    )
+    status = models.CharField(
+        max_length=32,
+        choices=STATUS_CHOICES,
+        default="RECEIVED",
+        db_index=True,
+    )
+    error_message = models.TextField(
+        blank=True,
+        help_text="Details if webhook processing failed.",
+    )
+    ip_address = models.GenericIPAddressField(
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+    )
+
+    class Meta:
+        verbose_name = "Printify Payload Log"
+        verbose_name_plural = "Printify Payload Logs"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Printify Log [{self.event_type} - {self.printify_order_id or 'N/A'}] - {self.status} at {self.created_at}"
+
 

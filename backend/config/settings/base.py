@@ -149,3 +149,10 @@ CELERY_TASK_ALWAYS_EAGER = os.getenv("CELERY_ALWAYS_EAGER", "True") == "True"  #
 PEECHO_API_BASE_URL = os.getenv("PEECHO_API_BASE_URL", "https://api.peecho.com")
 PEECHO_API_KEY = os.getenv("PEECHO_API_KEY", "sandbox_peecho_live_key_99812")
 PEECHO_WEBHOOK_SECRET = os.getenv("PEECHO_WEBHOOK_SECRET", "secret_peecho_sha256_hash_9012")
+
+# Printify POD Integration Credentials
+PRINTIFY_API_TOKEN = os.getenv("PRINTIFY_API_TOKEN", "")
+PRINTIFY_SHOP_ID = os.getenv("PRINTIFY_SHOP_ID", "")
+PRINTIFY_WEBHOOK_SECRET = os.getenv("PRINTIFY_WEBHOOK_SECRET", "")
+PRINTIFY_BASE_URL = os.getenv("PRINTIFY_BASE_URL", "https://api.printify.com/v1")
+
