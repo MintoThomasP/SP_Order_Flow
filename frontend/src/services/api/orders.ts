@@ -4,6 +4,8 @@ import {
   OrderMetrics,
   PeechoPayloadLog,
   PeechoIntegrationConfig,
+  PrintifyPayloadLog,
+  PrintifyIntegrationConfig,
   UserAuditLog,
   PaginatedResponse,
 } from "./types";
@@ -110,6 +112,105 @@ export const ordersApi = {
       tested_at: string;
       endpoint?: string;
     }>("/peecho/test-connection/");
+    return res.data;
+  },
+
+  // -------------------------------------------------------------
+  // Printify Print-on-Demand (POD) Integration API
+  // -------------------------------------------------------------
+  getPrintifyConfig: async (): Promise<PrintifyIntegrationConfig> => {
+    const res = await apiClient.get<PrintifyIntegrationConfig>("/printify/config/");
+    return res.data;
+  },
+
+  updatePrintifyConfig: async (
+    config: { api_token?: string; shop_id?: string; webhook_secret?: string }
+  ): Promise<{ message: string; shop_id: string }> => {
+    const res = await apiClient.post<{ message: string; shop_id: string }>(
+      "/printify/config/",
+      config
+    );
+    return res.data;
+  },
+
+  testPrintifyConnection: async (): Promise<{
+    success: boolean;
+    status: string;
+    mode: string;
+    message: string;
+    tested_at: string;
+    endpoint?: string;
+  }> => {
+    const res = await apiClient.post<{
+      success: boolean;
+      status: string;
+      mode: string;
+      message: string;
+      tested_at: string;
+      endpoint?: string;
+    }>("/printify/test-connection/");
+    return res.data;
+  },
+
+  registerPrintifyWebhooks: async (
+    callback_url?: string
+  ): Promise<{
+    success: boolean;
+    mode: string;
+    message: string;
+    callback_url: string;
+    topics?: any[];
+    results?: any[];
+  }> => {
+    const res = await apiClient.post<{
+      success: boolean;
+      mode: string;
+      message: string;
+      callback_url: string;
+      topics?: any[];
+      results?: any[];
+    }>("/printify/register-webhooks/", { callback_url });
+    return res.data;
+  },
+
+  getPrintifyPayloadLogs: async (): Promise<PaginatedResponse<PrintifyPayloadLog>> => {
+    const res = await apiClient.get<PaginatedResponse<PrintifyPayloadLog>>("/printify/logs/");
+    return res.data;
+  },
+
+  simulatePrintifyWebhook: async (params: {
+    event_type?: string;
+    order_number?: string;
+    carrier?: string;
+    tracking_number?: string;
+    status?: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    event_type: string;
+    printify_order_id: string;
+    order_number: string;
+    result: any;
+    log_id: string;
+  }> => {
+    const res = await apiClient.post<{
+      success: boolean;
+      message: string;
+      event_type: string;
+      printify_order_id: string;
+      order_number: string;
+      result: any;
+      log_id: string;
+    }>("/printify/simulate-webhook/", params);
+    return res.data;
+  },
+
+  ingestPrintifyWebhook: async (payload: Record<string, any>, signature?: string): Promise<any> => {
+    const headers: Record<string, string> = {};
+    if (signature) {
+      headers["X-Printify-Signature"] = signature;
+    }
+    const res = await apiClient.post("/webhooks/printify/", payload, { headers });
     return res.data;
   },
 };

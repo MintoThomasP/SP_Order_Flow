@@ -12,15 +12,29 @@ from apps.orders.views import (
     PeechoTestConnectionView,
 )
 
-from apps.orders.views_printify import PrintifyWebhookView
+from apps.orders.views_printify import (
+    PrintifyWebhookView,
+    PrintifyPayloadLogViewSet,
+    PrintifyConfigView,
+    PrintifyTestConnectionView,
+    PrintifyRegisterWebhooksView,
+    PrintifySimulateWebhookView,
+)
 
 router = DefaultRouter()
 router.register(r"orders", OrderViewSet, basename="orders")
 router.register(r"peecho/logs", PeechoPayloadLogViewSet, basename="peecho-logs")
+router.register(r"printify/logs", PrintifyPayloadLogViewSet, basename="printify-logs")
 
 urlpatterns = [
-    # Printify Inbound Webhooks
+    # Printify Inbound Webhook Listener
     path("webhooks/printify/", PrintifyWebhookView.as_view(), name="printify-webhook"),
+
+    # Printify Management & Automation Endpoints
+    path("printify/config/", PrintifyConfigView.as_view(), name="printify-config"),
+    path("printify/test-connection/", PrintifyTestConnectionView.as_view(), name="printify-test-connection"),
+    path("printify/register-webhooks/", PrintifyRegisterWebhooksView.as_view(), name="printify-register-webhooks"),
+    path("printify/simulate-webhook/", PrintifySimulateWebhookView.as_view(), name="printify-simulate-webhook"),
 
     # Peecho Centralized Integration & Webhook Ingestion
     path("peecho/webhook/", PeechoWebhookView.as_view(), name="peecho-webhook"),

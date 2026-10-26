@@ -50,6 +50,10 @@ class OrderSerializer(serializers.ModelSerializer):
             "total_items_count",
             "total_amount",
             "currency",
+            "order_source",
+            "is_external_pod",
+            "external_pod_order_id",
+            "tracking_number",
             "peecho_metadata",
             "is_active",
             "created_at",
@@ -139,4 +143,12 @@ class PeechoIntegrationConfigSerializer(serializers.ModelSerializer):
         if request:
             return request.build_absolute_uri(obj.webhook_endpoint_path)
         return f"http://127.0.0.1:8001{obj.webhook_endpoint_path}"
+
+
+class PrintifyPayloadLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        from apps.orders.models import PrintifyPayloadLog
+        model = PrintifyPayloadLog
+        fields = "__all__"
+
 

@@ -219,6 +219,45 @@ class PrintifyService:
 
         return results
 
+    def test_connection(self) -> Dict[str, Any]:
+        """
+        Validates authentication and API connectivity by querying /v1/shops.json.
+        """
+        if not self.api_token:
+            return {
+                "success": False,
+                "status": "MISSING_TOKEN",
+                "mode": "SANDBOX_MOCK",
+                "message": "PRINTIFY_API_TOKEN is not yet set in environment.",
+            }
+        try:
+            url = f"{self.base_url}/shops.json"
+            resp = self.session.get(url, timeout=self.timeout)
+            if resp.status_code == 200:
+                data = resp.json()
+                shops = data if isinstance(data, list) else data.get("data", [])
+                return {
+                    "success": True,
+                    "status": "CONNECTED",
+                    "mode": "PRODUCTION_LIVE",
+                    "message": f"Printify API authentication successful. Verified {len(shops)} connected shop(s).",
+                    "shops": shops,
+                }
+            else:
+                return {
+                    "success": False,
+                    "status": f"HTTP_{resp.status_code}",
+                    "mode": "PRODUCTION_LIVE",
+                    "message": f"Printify API responded with HTTP {resp.status_code}: {resp.text[:200]}",
+                }
+        except Exception as exc:
+            return {
+                "success": False,
+                "status": "NETWORK_ERROR",
+                "mode": "PRODUCTION_LIVE",
+                "message": f"Failed to reach Printify API: {exc}",
+            }
+
     @staticmethod
     def build_order_payload(order: Order) -> Dict[str, Any]:
         """

@@ -554,3 +554,30 @@ export interface PeechoIntegrationConfig {
   updated_at: string;
 }
 
+export interface PrintifyPayloadLog {
+  id: string;
+  printify_order_id: string;
+  event_type: string;
+  raw_payload: Record<string, any>;
+  status: "RECEIVED" | "PROCESSED" | "IGNORED" | "INVALID_SIGNATURE" | "FAILED";
+  error_message: string;
+  ip_address: string | null;
+  created_at: string;
+}
+
+export interface PrintifyIntegrationConfig {
+  shop_id: string;
+  api_token?: string;
+  api_token_masked: string;
+  webhook_secret?: string;
+  webhook_secret_masked: string;
+  base_url: string;
+  webhook_endpoint_path: string;
+  full_webhook_url: string;
+  is_configured: boolean;
+  total_orders_synced: number;
+  registered_events: string[];
+  last_connection_status: string;
+}
+
+
