@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --primary: #0073EA;
+    --primary-hover: #0060B9;
+    --primary-light: #EFF6FF;
+    --primary-glow: rgba(0, 115, 234, 0.15);
+    
+    --canvas: #F6F7FB;
+    --surface: #FFFFFF;
+    --surface-subtle: #F4F5F7;
+    --surface-border: #E5E7EB;
+    
+    --text-primary: #1E2229;
+    --text-secondary: #676879;
+    --text-muted: #94A3B8;
+
+    --rail-bg: #111C44;
+  }
+}
+
+body {
+  background-color: #F6F7FB;
+  color: #1E2229;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom subtle scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(1.02); }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 3s ease-in-out infinite;
+}
