@@ -7,9 +7,7 @@ User=ubuntu
 Group=www-data
 WorkingDirectory=/var/www/SP_Order_Flow/backend
 EnvironmentFile=/var/www/SP_Order_Flow/backend/.env
-ExecStart=/var/www/SP_Order_Flow/backend/.venv/bin/celery -A config worker \
-    --loglevel=info \
-    --concurrency=2
+ExecStart=/var/www/SP_Order_Flow/backend/.venv/bin/celery -A config worker --loglevel=info --concurrency=2
 Restart=always
 RestartSec=5
 
