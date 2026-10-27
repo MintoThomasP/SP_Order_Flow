@@ -6,7 +6,14 @@ from .base import *
 
 DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes")
 
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+    if host.strip()
+]
+for _h in ("127.0.0.1", "localhost"):
+    if _h not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(_h)
 
 # Multi-database support (MySQL / PostgreSQL / Configurable engine)
 DB_ENGINE = os.getenv("DB_ENGINE", "django.db.backends.mysql")
@@ -36,12 +43,18 @@ DATABASES = {
     "default": db_config
 }
 
-# Production CORS settings
+# Production CORS & CSRF settings
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = [
-    origin.strip()
+    origin.strip().rstrip("/")
     for origin in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
     if origin.strip()
+]
+
+# CSRF Trusted Origins (required by Django 4+ and 5+ for HTTPS forms/admin)
+CSRF_TRUSTED_ORIGINS = [
+    origin if origin.startswith("http") else f"https://{origin}"
+    for origin in CORS_ALLOWED_ORIGINS
 ]
 
 # Security headers for production
