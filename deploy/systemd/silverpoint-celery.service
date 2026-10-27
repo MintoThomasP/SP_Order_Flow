@@ -1,0 +1,18 @@
+[Unit]
+Description=SilverPoint POD Celery Background Worker
+After=network.target redis-server.service postgresql.service silverpoint-backend.service
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/silverpoint/backend
+EnvironmentFile=/var/www/silverpoint/backend/.env
+ExecStart=/var/www/silverpoint/backend/.venv/bin/celery -A config worker \
+    --loglevel=info \
+    --concurrency=2 \
+    --logfile=/var/log/silverpoint-celery.log
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
