@@ -1,6 +1,6 @@
 [Unit]
 Description=SilverPoint POD Django Gunicorn Daemon
-After=network.target postgresql.service redis-server.service
+After=network.target mysql.service redis-server.service
 
 [Service]
 User=ubuntu
@@ -11,8 +11,8 @@ ExecStart=/var/www/SP_Order_Flow/backend/.venv/bin/gunicorn config.wsgi:applicat
     --bind 127.0.0.1:8000 \
     --workers 3 \
     --timeout 120 \
-    --access-logfile /var/log/silverpoint-backend.access.log \
-    --error-logfile /var/log/silverpoint-backend.error.log
+    --access-logfile - \
+    --error-logfile -
 Restart=always
 RestartSec=3
 

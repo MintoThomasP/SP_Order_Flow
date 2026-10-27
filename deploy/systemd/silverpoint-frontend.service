@@ -9,7 +9,8 @@ WorkingDirectory=/var/www/SP_Order_Flow/frontend
 Environment=NODE_ENV=production
 Environment=PORT=3000
 Environment=HOSTNAME=127.0.0.1
-ExecStart=/usr/bin/npm run start
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/bin/sh -c "npm run start"
 Restart=always
 RestartSec=3
 

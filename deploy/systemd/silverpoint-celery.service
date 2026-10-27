@@ -1,6 +1,6 @@
 [Unit]
 Description=SilverPoint POD Celery Background Worker
-After=network.target redis-server.service postgresql.service silverpoint-backend.service
+After=network.target redis-server.service mysql.service silverpoint-backend.service
 
 [Service]
 User=ubuntu
@@ -9,8 +9,7 @@ WorkingDirectory=/var/www/SP_Order_Flow/backend
 EnvironmentFile=/var/www/SP_Order_Flow/backend/.env
 ExecStart=/var/www/SP_Order_Flow/backend/.venv/bin/celery -A config worker \
     --loglevel=info \
-    --concurrency=2 \
-    --logfile=/var/log/silverpoint-celery.log
+    --concurrency=2
 Restart=always
 RestartSec=5
 
