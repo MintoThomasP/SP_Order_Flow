@@ -41,22 +41,26 @@ sudo apt install -y nodejs
 
 ---
 
-## 2. Set Up the PostgreSQL Database
+## 2. Set Up the MySQL Database
 
-Log into PostgreSQL and create the production user and database:
+Log into MySQL on your server:
 ```bash
-sudo -u postgres psql
+sudo mysql
 ```
 
-Run these SQL queries:
+Run these SQL queries to create the database with full UTF-8 Unicode support:
 ```sql
-CREATE DATABASE silverpoint_pod;
-CREATE USER silverpoint_user WITH PASSWORD 'YOUR_STRONG_PASSWORD';
-ALTER ROLE silverpoint_user SET client_encoding TO 'utf8';
-ALTER ROLE silverpoint_user SET default_transaction_isolation TO 'read committed';
-ALTER ROLE silverpoint_user SET timezone TO 'UTC';
-GRANT ALL PRIVILEGES ON DATABASE silverpoint_pod TO silverpoint_user;
-\q
+CREATE DATABASE IF NOT EXISTS silverpoint_pod CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS 'silverpoint_user'@'localhost' IDENTIFIED BY 'YOUR_STRONG_PASSWORD';
+ALTER USER 'silverpoint_user'@'localhost' IDENTIFIED BY 'YOUR_STRONG_PASSWORD';
+GRANT ALL PRIVILEGES ON silverpoint_pod.* TO 'silverpoint_user'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;
+```
+
+Test logging in with your MySQL user:
+```bash
+mysql -u silverpoint_user -p silverpoint_pod
 ```
 
 ---
@@ -96,13 +100,13 @@ DEBUG=False
 ALLOWED_HOSTS=yourdomain.com,www.yourdomain.com,YOUR_SERVER_IP,127.0.0.1,localhost
 CORS_ALLOWED_ORIGINS=https://yourdomain.com,http://yourdomain.com
 
-# PostgreSQL Connection
-DB_ENGINE=django.db.backends.postgresql
+# MySQL Connection
+DB_ENGINE=django.db.backends.mysql
 DB_NAME=silverpoint_pod
 DB_USER=silverpoint_user
 DB_PASSWORD=YOUR_STRONG_PASSWORD
 DB_HOST=127.0.0.1
-DB_PORT=5432
+DB_PORT=3306
 
 # Redis & Celery
 CELERY_BROKER_URL=redis://127.0.0.1:6379/0
