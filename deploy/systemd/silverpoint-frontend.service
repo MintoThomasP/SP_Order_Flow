@@ -3,9 +3,9 @@ Description=SilverPoint POD Next.js Frontend Daemon
 After=network.target silverpoint-backend.service
 
 [Service]
-User=www-data
+User=ubuntu
 Group=www-data
-WorkingDirectory=/var/www/silverpoint/frontend
+WorkingDirectory=/var/www/SP_Order_Flow/frontend
 Environment=NODE_ENV=production
 Environment=PORT=3000
 Environment=HOSTNAME=127.0.0.1

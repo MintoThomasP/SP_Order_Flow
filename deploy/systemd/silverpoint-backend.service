@@ -3,11 +3,11 @@ Description=SilverPoint POD Django Gunicorn Daemon
 After=network.target postgresql.service redis-server.service
 
 [Service]
-User=www-data
+User=ubuntu
 Group=www-data
-WorkingDirectory=/var/www/silverpoint/backend
-EnvironmentFile=/var/www/silverpoint/backend/.env
-ExecStart=/var/www/silverpoint/backend/.venv/bin/gunicorn config.wsgi:application \
+WorkingDirectory=/var/www/SP_Order_Flow/backend
+EnvironmentFile=/var/www/SP_Order_Flow/backend/.env
+ExecStart=/var/www/SP_Order_Flow/backend/.venv/bin/gunicorn config.wsgi:application \
     --bind 127.0.0.1:8000 \
     --workers 3 \
     --timeout 120 \

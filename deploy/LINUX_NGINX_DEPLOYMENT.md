@@ -11,8 +11,8 @@ Internet (Port 80/443)
        │
        ▼
 Nginx (Host Web Server)
- ├── /static/  ──────> /var/www/silverpoint/backend/staticfiles/
- ├── /media/   ──────> /var/www/silverpoint/backend/media/
+ ├── /static/  ──────> /var/www/SP_Order_Flow/backend/staticfiles/
+ ├── /media/   ──────> /var/www/SP_Order_Flow/backend/media/
  ├── /api/ & /admin/ > Gunicorn (127.0.0.1:8000) [Systemd: silverpoint-backend]
  └── /         ──────> Next.js (127.0.0.1:3000)  [Systemd: silverpoint-frontend]
 ```
@@ -61,14 +61,14 @@ GRANT ALL PRIVILEGES ON DATABASE silverpoint_pod TO silverpoint_user;
 
 ---
 
-## 3. Clone Repository to `/var/www/silverpoint`
+## 3. Clone Repository to `/var/www/SP_Order_Flow`
 
 ```bash
-sudo mkdir -p /var/www/silverpoint
-sudo chown -R $USER:www-data /var/www/silverpoint
+sudo mkdir -p /var/www/SP_Order_Flow
+sudo chown -R $USER:www-data /var/www/SP_Order_Flow
 
-git clone https://github.com/MintoThomasP/SP_Order_Flow.git /var/www/silverpoint
-cd /var/www/silverpoint
+git clone https://github.com/MintoThomasP/SP_Order_Flow.git /var/www/SP_Order_Flow
+cd /var/www/SP_Order_Flow
 ```
 
 ---
@@ -76,7 +76,7 @@ cd /var/www/silverpoint
 ## 4. Set Up Backend (Python Virtualenv & Database)
 
 ```bash
-cd /var/www/silverpoint/backend
+cd /var/www/SP_Order_Flow/backend
 
 # Create virtualenv and install dependencies
 python3 -m venv .venv
@@ -131,7 +131,7 @@ python manage.py createsuperuser
 ## 5. Set Up Frontend (Next.js Production Build)
 
 ```bash
-cd /var/www/silverpoint/frontend
+cd /var/www/SP_Order_Flow/frontend
 
 # Install dependencies and build optimized bundle
 npm ci
@@ -145,7 +145,7 @@ npm run build
 Copy the provided systemd service files to `/etc/systemd/system/`:
 
 ```bash
-sudo cp /var/www/silverpoint/deploy/systemd/*.service /etc/systemd/system/
+sudo cp /var/www/SP_Order_Flow/deploy/systemd/*.service /etc/systemd/system/
 sudo systemctl daemon-reload
 ```
 
@@ -174,7 +174,7 @@ sudo systemctl status silverpoint-frontend
 
 Copy the Nginx configuration:
 ```bash
-sudo cp /var/www/silverpoint/deploy/nginx/silverpoint.conf /etc/nginx/sites-available/silverpoint
+sudo cp /var/www/SP_Order_Flow/deploy/nginx/silverpoint.conf /etc/nginx/sites-available/silverpoint
 ```
 
 Edit the file to put your domain name:
@@ -208,7 +208,7 @@ Certbot automatically configures SSL in `/etc/nginx/sites-available/silverpoint`
 
 To pull new code and restart services:
 ```bash
-cd /var/www/silverpoint
+cd /var/www/SP_Order_Flow
 git pull origin main
 
 # Backend update

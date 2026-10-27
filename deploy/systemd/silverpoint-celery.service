@@ -3,11 +3,11 @@ Description=SilverPoint POD Celery Background Worker
 After=network.target redis-server.service postgresql.service silverpoint-backend.service
 
 [Service]
-User=www-data
+User=ubuntu
 Group=www-data
-WorkingDirectory=/var/www/silverpoint/backend
-EnvironmentFile=/var/www/silverpoint/backend/.env
-ExecStart=/var/www/silverpoint/backend/.venv/bin/celery -A config worker \
+WorkingDirectory=/var/www/SP_Order_Flow/backend
+EnvironmentFile=/var/www/SP_Order_Flow/backend/.env
+ExecStart=/var/www/SP_Order_Flow/backend/.venv/bin/celery -A config worker \
     --loglevel=info \
     --concurrency=2 \
     --logfile=/var/log/silverpoint-celery.log
