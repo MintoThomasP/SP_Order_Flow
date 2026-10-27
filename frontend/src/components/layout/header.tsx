@@ -87,7 +87,7 @@ export const Header: React.FC = () => {
 
   const handleLogout = async () => {
     await authApi.logout();
-    router.push("/login");
+    window.location.href = "/login";
   };
 
   const getRelativeTime = (timestamp: string) => {

@@ -24,24 +24,47 @@ export function RBACAccessGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isMounted, setIsMounted] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   useEffect(() => {
     setIsMounted(true);
     try {
       const stored = localStorage.getItem("silverpoint_user");
-      if (stored) {
+      const token = localStorage.getItem("silverpoint_access_token");
+      if (stored && token) {
         setCurrentUser(JSON.parse(stored));
+        setIsAuthenticated(true);
+      } else {
+        setIsAuthenticated(false);
+        router.replace("/login");
       }
     } catch (e) {
-      // ignore
+      setIsAuthenticated(false);
+      router.replace("/login");
     }
-  }, [pathname]);
+  }, [pathname, router]);
 
-  if (!isMounted) {
-    return <>{children}</>;
+  if (!isMounted || isAuthenticated === null) {
+    return (
+      <div className="min-h-screen bg-[#F6F7FB] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0073EA]" />
+          <span className="text-xs text-slate-400 font-medium tracking-wide">
+            Checking workstation authorization...
+          </span>
+        </div>
+      </div>
+    );
   }
 
-  const userRole = currentUser?.role?.code || currentUser?.role_code || "SUPER_ADMIN";
+  if (!isAuthenticated) {
+    return null;
+  }
+
+  const userRole =
+    currentUser?.role?.code ||
+    currentUser?.role_code ||
+    (currentUser?.is_superuser ? "SUPER_ADMIN" : "STAFF");
   const staffName = currentUser?.first_name
     ? `${currentUser.first_name} ${currentUser.last_name || ""}`.trim()
     : currentUser?.username || "Staff Member";

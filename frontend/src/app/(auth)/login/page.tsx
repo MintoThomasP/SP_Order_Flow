@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -19,6 +19,19 @@ import { getRoleHomePath } from "@/components/layout/navigation-config";
 
 export default function LoginPage() {
   const router = useRouter();
+
+  // If already logged in, redirect directly to dashboard
+  useEffect(() => {
+    try {
+      const token = localStorage.getItem("silverpoint_access_token");
+      const user = localStorage.getItem("silverpoint_user");
+      if (token && user) {
+        router.replace("/overview");
+      }
+    } catch {
+      // ignore
+    }
+  }, [router]);
 
   // Form Fields
   const [email, setEmail] = useState("admin@silverpointpod.com");
@@ -239,16 +252,6 @@ export default function LoginPage() {
             </div>
           </div>
 
-        </div>
-
-        {/* Guest Preview */}
-        <div className="mt-4 text-center">
-          <Link
-            href="/overview"
-            className="text-xs text-slate-400 hover:text-[#0073EA] transition-colors"
-          >
-            Skip to Operations Dashboard
-          </Link>
         </div>
       </div>
     </div>

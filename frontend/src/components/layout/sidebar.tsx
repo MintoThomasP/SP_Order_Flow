@@ -56,7 +56,7 @@ export const Sidebar: React.FC = () => {
 
   const handleLogout = async () => {
     await authApi.logout();
-    router.push("/login");
+    window.location.href = "/login";
   };
 
   const userRole = currentUser?.role?.code || currentUser?.role_code || "SUPER_ADMIN";

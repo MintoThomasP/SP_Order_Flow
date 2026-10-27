@@ -1,6 +1,22 @@
 import axios from "axios";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
+export const getApiBaseUrl = (): string => {
+  if (typeof window !== "undefined") {
+    const envUrl = process.env.NEXT_PUBLIC_API_URL;
+    // If explicitly configured with a non-localhost domain, use it
+    if (envUrl && !envUrl.includes("127.0.0.1") && !envUrl.includes("localhost")) {
+      return envUrl;
+    }
+    // In production browser (e.g. orderflow.silverpointprint.com), use relative path so Nginx handles proxying
+    if (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+      return "/api/v1";
+    }
+    return envUrl || "http://127.0.0.1:8000/api/v1";
+  }
+  return process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
+};
+
+export const API_BASE_URL = getApiBaseUrl();
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
