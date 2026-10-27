@@ -6,9 +6,17 @@ from datetime import timedelta
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
-
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+# Robustly load .env from backend directory or project root
+for env_candidate in [
+    BASE_DIR / ".env",
+    BASE_DIR.parent / ".env",
+    BASE_DIR / ".env.production",
+    BASE_DIR.parent / ".env.production",
+]:
+    if env_candidate.exists():
+        load_dotenv(env_candidate, override=True)
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "django-insecure-pod-dev-key-change-in-production-^9k8!#x1")
 

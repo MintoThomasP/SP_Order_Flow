@@ -2,7 +2,19 @@
 Production settings with PostgreSQL / MySQL support and hardened security.
 """
 import os
+from pathlib import Path
+from dotenv import load_dotenv
 from .base import *
+
+# Ensure environment variables from .env or .env.production are loaded with override
+for env_candidate in [
+    BASE_DIR / ".env",
+    BASE_DIR.parent / ".env",
+    BASE_DIR / ".env.production",
+    BASE_DIR.parent / ".env.production",
+]:
+    if env_candidate.exists():
+        load_dotenv(env_candidate, override=True)
 
 DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes")
 

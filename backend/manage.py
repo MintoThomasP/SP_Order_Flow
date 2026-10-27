@@ -6,10 +6,15 @@ import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load .env file from the backend directory if present
-env_file = Path(__file__).resolve().parent / ".env"
-if env_file.exists():
-    load_dotenv(env_file)
+# Load .env file from the backend directory or project root
+for env_candidate in [
+    Path(__file__).resolve().parent / ".env",
+    Path(__file__).resolve().parent.parent / ".env",
+    Path(__file__).resolve().parent / ".env.production",
+    Path(__file__).resolve().parent.parent / ".env.production",
+]:
+    if env_candidate.exists():
+        load_dotenv(env_candidate, override=True)
 
 
 def main():
