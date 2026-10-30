@@ -50,8 +50,11 @@ venv.bak/
 db.sqlite3
 db.sqlite3-journal
 
-# Django Generated Media & PDFs (preserve sample templates)
-backend/media/job_tickets/*.pdf
+# Django Generated Media & Staticfiles
+backend/media/
+media/
+backend/staticfiles/
+staticfiles/
 
 # Celery Beat
 celerybeat-schedule
