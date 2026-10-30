@@ -7,9 +7,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Install system dependencies for Pillow, reportlab, psycopg2, and curl
+# Install system dependencies for Pillow, reportlab, psycopg2, MySQL (mysqlclient), and curl
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    pkg-config \
+    default-libmysqlclient-dev \
     libpq-dev \
     libjpeg-dev \
     zlib1g-dev \
