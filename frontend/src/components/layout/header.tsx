@@ -129,6 +129,12 @@ export const Header: React.FC = () => {
         <Search className="w-3.5 h-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
         <input
           type="text"
+          name="global_nav_search"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          data-lpignore="true"
           placeholder="Search orders, staff, shipments..."
           className="w-full bg-[#F4F5F7] border border-[#E5E7EB] rounded-full pl-9 pr-4 py-1.5 text-xs text-[#1E2229] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#0073EA]/20 focus:border-[#0073EA] focus:bg-white transition-all"
         />

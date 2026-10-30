@@ -192,7 +192,7 @@ class Order(BaseModel):
     class Meta:
         verbose_name = "POD Order"
         verbose_name_plural = "POD Orders"
-        ordering = ["sla_deadline", "-created_at"]
+        ordering = ["-created_at"]
 
     def __str__(self):
         status_name = self.status.name if self.status else "Unassigned"

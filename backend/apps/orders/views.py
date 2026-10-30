@@ -25,6 +25,21 @@ from apps.authentication.models import UserAuditLog
 from apps.authentication.serializers import UserAuditLogSerializer
 
 
+def is_user_admin(user) -> bool:
+    """
+    Check if a user has administrative privileges (Super Admin, Staff, or Admin role).
+    """
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
+        return True
+    user_role = getattr(user, "role", None)
+    role_code = getattr(user_role, "code", "") if user_role else ""
+    if not role_code and isinstance(user_role, str):
+        role_code = user_role
+    return str(role_code).upper() in ["SUPER_ADMIN", "ADMIN"]
+
+
 class PeechoWebhookView(APIView):
     """
     POST /api/v1/peecho/webhook/
@@ -152,8 +167,8 @@ class OrderSimulateView(APIView):
                         "page_count": selected_prod[1],
                         "spine_width_mm": float(selected_prod[2]),
                         "paper_stock": selected_prod[3],
-                        "pdf_artwork_url": f"https://assets.peecho.com/orders/{rand_id}/content_hires.pdf",
-                        "pdf_cover_url": f"https://assets.peecho.com/orders/{rand_id}/cover_hires.pdf",
+                        "pdf_artwork_url": "/artworks/peecho_hardcover_photobook_a4.pdf",
+                        "pdf_cover_url": "/artworks/peecho_hardcover_wrap_cover.pdf",
                     }
                 ],
             }
@@ -416,7 +431,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         "order_source",
     ]
     ordering_fields = ["sla_deadline", "created_at", "total_amount", "order_number"]
-    ordering = ["sla_deadline"]
+    ordering = ["-created_at"]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -453,6 +468,42 @@ class OrderViewSet(viewsets.ModelViewSet):
             qs = qs.filter(sla_deadline__lt=now)
         elif sla_urgency == "normal": # > 12 hours
             qs = qs.filter(sla_deadline__gt=now + timedelta(hours=12))
+
+        station_param = self.request.query_params.get("station")
+        if station_param:
+            station_lower = station_param.strip().lower()
+            if station_lower in ["prepress", "preflight"]:
+                qs = qs.filter(status__code__in=["RECEIVED", "PREPRESS_QUEUED", "PENDING_PREPRESS", "PREPRESS_PASSED", "EXCEPTION_HOLD"])
+            elif station_lower in ["production", "press", "shopfloor"]:
+                qs = qs.filter(status__code__in=["PREPRESS_PASSED", "BATCHED", "IN_PRODUCTION", "PRINTING", "QUALITY_AUDIT", "PRODUCTION_COMPLETED", "PACKED"])
+            elif station_lower in ["shipping", "dispatch", "logistics"]:
+                qs = qs.filter(status__code__in=["PACKED", "READY_FOR_DISPATCH", "DISPATCHED", "IN_TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED", "EXCEPTION_HOLD"])
+            elif station_lower in ["finance", "billing"]:
+                qs = qs.filter(status__code__in=["DISPATCHED", "DELIVERED", "EXCEPTION_HOLD"])
+
+        # Enforce pipeline stage boundary for non-admin operational designations
+        user = self.request.user
+        admin_flag = is_user_admin(user)
+        if not admin_flag:
+            user_role = getattr(user, "role", None)
+            role_code = getattr(user_role, "code", "") if user_role else ""
+            if not role_code and isinstance(user_role, str):
+                role_code = user_role
+            if not role_code:
+                role_code = self.request.headers.get("X-Staff-Role") or ""
+            role_code = str(role_code).strip().upper()
+
+            if role_code == "SHOPFLOOR_OPERATOR":
+                # Print & bindery operators must NEVER see unapproved prepress orders
+                qs = qs.exclude(status__code__in=["RECEIVED", "PREPRESS_QUEUED", "PENDING_PREPRESS"])
+            elif role_code == "PRODUCTION_MANAGER":
+                # Production manager only sees orders that have reached/passed prepress approval
+                qs = qs.exclude(status__code__in=["RECEIVED", "PREPRESS_QUEUED", "PENDING_PREPRESS"])
+            elif role_code in ["DISPATCH_SPECIALIST", "DISPATCH_FINANCE_SPECIALIST"]:
+                # Shipping specialists only see orders that are packed or ready for dispatch
+                qs = qs.filter(status__code__in=["PACKED", "READY_FOR_DISPATCH", "DISPATCHED", "IN_TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED", "EXCEPTION_HOLD"])
+            elif role_code == "FINANCE_SPECIALIST":
+                qs = qs.filter(status__code__in=["DISPATCHED", "DELIVERED", "EXCEPTION_HOLD"])
 
         return qs
 
@@ -503,12 +554,175 @@ class OrderViewSet(viewsets.ModelViewSet):
                 defaults=defaults,
             )
 
+        # Sequential Order Pipeline Enforcement
+        PIPELINE_STEP_INDEX = {
+            "RECEIVED": 1,
+            "PREPRESS_QUEUED": 2,
+            "PREPRESS_PASSED": 3,
+            "BATCHED": 4,
+            "IN_PRODUCTION": 5,
+            "PRINTING": 6,
+            "QUALITY_AUDIT": 7,
+            "PRODUCTION_COMPLETED": 8,
+            "PACKED": 8,
+            "READY_FOR_DISPATCH": 9,
+            "DISPATCHED": 10,
+            "IN_TRANSIT": 11,
+            "OUT_FOR_DELIVERY": 12,
+            "DELIVERED": 13,
+        }
+
+        current_code = order.status.code.upper() if order.status else "RECEIVED"
+        target_code_upper = target_status.code.upper()
+
+        current_step = PIPELINE_STEP_INDEX.get(current_code)
+        target_step = PIPELINE_STEP_INDEX.get(target_code_upper)
+
+        is_backward = False
+        is_skipped = False
+
+        if current_step is not None and target_step is not None:
+            if target_step < current_step:
+                is_backward = True
+            elif target_step > current_step + 1:
+                # Standard operational transitions within station boundary
+                if current_code in ["RECEIVED", "PREPRESS_QUEUED"] and target_code_upper == "PREPRESS_PASSED":
+                    is_skipped = False
+                elif current_code in ["IN_PRODUCTION", "PRINTING", "QUALITY_AUDIT"] and target_code_upper in ["QUALITY_AUDIT", "PRODUCTION_COMPLETED", "PACKED"]:
+                    is_skipped = False
+                else:
+                    is_skipped = True
+
+        requires_admin = is_backward or is_skipped
+
+        user = request.user
+        admin_flag = is_user_admin(user)
+
+        # Staff Designation & Department Transition Authorization Check
+        if not admin_flag:
+            user_role = getattr(user, "role", None)
+            role_code = getattr(user_role, "code", "") if user_role else ""
+            if not role_code and isinstance(user_role, str):
+                role_code = user_role
+            if not role_code:
+                role_code = request.headers.get("X-Staff-Role") or request.data.get("user_role") or ""
+            role_code = str(role_code).strip().upper()
+
+            if role_code in ["SUPER_ADMIN", "ADMIN"]:
+                admin_flag = True
+            else:
+                # 1. Station lifecycle boundary check:
+                if role_code == "PREPRESS_SPECIALIST":
+                    if current_code in [
+                        "PREPRESS_PASSED", "BATCHED", "IN_PRODUCTION", "PRINTING", "QUALITY_AUDIT",
+                        "PRODUCTION_COMPLETED", "PACKED", "READY_FOR_DISPATCH", "DISPATCHED",
+                        "IN_TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED"
+                    ]:
+                        return Response(
+                            {
+                                "error": "PREPRESS_ALREADY_APPROVED",
+                                "detail": "Artwork for this order has already been approved and handed over to the Production Floor. Prepress staff cannot modify orders that have already passed prepress inspection.",
+                                "current_status": current_code,
+                            },
+                            status=status.HTTP_403_FORBIDDEN,
+                        )
+
+                elif role_code == "SHOPFLOOR_OPERATOR":
+                    if current_code in ["RECEIVED", "PREPRESS_QUEUED", "PENDING_PREPRESS"]:
+                        return Response(
+                            {
+                                "error": "AWAITING_PREPRESS_APPROVAL",
+                                "detail": "This order is awaiting Artwork check in Prepress. Shopfloor operators cannot operate on unapproved orders.",
+                                "current_status": current_code,
+                            },
+                            status=status.HTTP_403_FORBIDDEN,
+                        )
+                    if current_code in ["PACKED", "READY_FOR_DISPATCH", "DISPATCHED", "IN_TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED"]:
+                        return Response(
+                            {
+                                "error": "PRODUCTION_ALREADY_COMPLETED",
+                                "detail": "This order has already finished press and bindery operations and is staged for shipping.",
+                                "current_status": current_code,
+                            },
+                            status=status.HTTP_403_FORBIDDEN,
+                        )
+
+                elif role_code in ["DISPATCH_SPECIALIST", "DISPATCH_FINANCE_SPECIALIST"]:
+                    if current_code not in ["PACKED", "READY_FOR_DISPATCH", "DISPATCHED", "IN_TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED", "EXCEPTION_HOLD"]:
+                        return Response(
+                            {
+                                "error": "NOT_READY_FOR_DISPATCH",
+                                "detail": "This order has not finished production yet. Shipping staff can only process orders once packed and ready for dispatch.",
+                                "current_status": current_code,
+                            },
+                            status=status.HTTP_403_FORBIDDEN,
+                        )
+
+                ROLE_ALLOWED_TARGETS = {
+                    "PREPRESS_SPECIALIST": ["PREPRESS_PASSED", "EXCEPTION_HOLD"],
+                    "PRODUCTION_MANAGER": ["BATCHED", "IN_PRODUCTION", "PRINTING", "QUALITY_AUDIT", "PRODUCTION_COMPLETED", "PACKED", "READY_FOR_DISPATCH", "EXCEPTION_HOLD"],
+                    "SHOPFLOOR_OPERATOR": ["IN_PRODUCTION", "PRINTING", "QUALITY_AUDIT", "PACKED"],
+                    "DISPATCH_SPECIALIST": ["READY_FOR_DISPATCH", "DISPATCHED", "IN_TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED", "EXCEPTION_HOLD"],
+                    "DISPATCH_FINANCE_SPECIALIST": ["READY_FOR_DISPATCH", "DISPATCHED", "IN_TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED", "EXCEPTION_HOLD"],
+                    "FINANCE_SPECIALIST": ["EXCEPTION_HOLD"],
+                    "INTEGRATION_SPECIALIST": ["RECEIVED", "PREPRESS_QUEUED", "EXCEPTION_HOLD"],
+                }
+
+                if role_code in ROLE_ALLOWED_TARGETS:
+                    allowed_targets = ROLE_ALLOWED_TARGETS[role_code]
+                    if target_code_upper not in allowed_targets:
+                        return Response(
+                            {
+                                "error": "DESIGNATION_TRANSITION_RESTRICTED",
+                                "detail": f"Your operational designation ({role_code}) is restricted to your station and cannot transition orders to '{target_code_upper}'.",
+                                "current_status": current_code,
+                                "requested_status": target_code_upper,
+                                "allowed_statuses": allowed_targets,
+                            },
+                            status=status.HTTP_403_FORBIDDEN,
+                        )
+
+        if requires_admin:
+            admin_approved = serializer.validated_data.get("admin_approved", False)
+
+            if not (admin_flag or admin_approved):
+                reason = "revert to a previous status" if is_backward else "skip forward multiple stages"
+                return Response(
+                    {
+                        "error": "ADMIN_APPROVAL_REQUIRED",
+                        "detail": f"Order status cannot {reason} without Admin approval. Current status is '{current_code}', requested status is '{target_code_upper}'. Please ask an Administrator to approve this change.",
+                        "current_status": current_code,
+                        "requested_status": target_code_upper,
+                        "is_backward": is_backward,
+                        "is_skipped": is_skipped,
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
         old_status_name = order.status.name if order.status else "None"
         order.status = target_status
         order.save(update_fields=["status", "updated_at"])
 
-        # Synchronize with linked Shipment records if advancing logistics milestone
+        # Keep artwork verifications in sync with order status
+        now_time = timezone.now()
         target_code_upper = target_status.code.upper()
+        if target_code_upper in [
+            "PREPRESS_PASSED", "BATCHED", "IN_PRODUCTION", "PRINTING", "QUALITY_AUDIT",
+            "PRODUCTION_COMPLETED", "PACKED", "READY_FOR_DISPATCH", "DISPATCHED",
+            "IN_TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED"
+        ]:
+            order.artwork_verifications.filter(verification_status="PENDING_REVIEW").update(
+                verification_status="APPROVED_FOR_PRINT",
+                verified_at=now_time,
+            )
+        elif target_code_upper == "EXCEPTION_HOLD":
+            order.artwork_verifications.exclude(verification_status="FLAGGED_ERROR").update(
+                verification_status="FLAGGED_ERROR",
+                error_reason=comments or "Order placed on exception hold",
+                verified_at=now_time,
+            )
+
+        # Synchronize with linked Shipment records if advancing logistics milestone
         if target_code_upper in ["DISPATCHED", "IN_TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED"]:
             now = timezone.now()
             shipment_status = EntityStatus.objects.filter(entity_type="SHIPMENT", code__iexact=target_code_upper).first() or target_status
@@ -548,6 +762,9 @@ class OrderViewSet(viewsets.ModelViewSet):
                 "status_code": target_status.code,
                 "peecho_order_id": order.peecho_order_id,
                 "comments": comments,
+                "admin_override": requires_admin,
+                "is_backward": is_backward,
+                "is_skipped": is_skipped,
                 "peecho_sync": peecho_sync_res,
             },
             request=request,

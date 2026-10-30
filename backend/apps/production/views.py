@@ -7,8 +7,13 @@ from rest_framework import viewsets, status, filters
 from rest_framework.response import Response
 from rest_framework.decorators import action
 
-from apps.production.models import ProductionBatch
-from apps.production.serializers import ProductionBatchSerializer, CreateProductionBatchSerializer
+from apps.production.models import ProductionBatch, PrintMachine, BindingMethod
+from apps.production.serializers import (
+    ProductionBatchSerializer,
+    CreateProductionBatchSerializer,
+    PrintMachineSerializer,
+    BindingMethodSerializer,
+)
 from apps.production.services.job_ticket import generate_job_ticket_pdf
 from apps.orders.models import Order
 from apps.orders.serializers import OrderSerializer
@@ -21,12 +26,30 @@ class ProductionBatchViewSet(viewsets.ModelViewSet):
     Production Batching ViewSet.
     Compiles verified orders by paper stock/binding, schedules digital presses, and generates QR Job Tickets.
     """
-    queryset = ProductionBatch.objects.select_related("status", "assigned_operator").prefetch_related("orders__items").all()
+    queryset = ProductionBatch.objects.select_related("status", "assigned_operator").prefetch_related("orders__items", "orders__status").all()
     serializer_class = ProductionBatchSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ["batch_number", "paper_stock", "size_format", "target_press"]
+    search_fields = [
+        "batch_number",
+        "paper_stock",
+        "size_format",
+        "target_press",
+        "orders__order_number",
+        "orders__peecho_order_id",
+        "orders__customer_name",
+    ]
     ordering_fields = ["created_at", "total_orders_count", "priority"]
     ordering = ["-created_at"]
+
+    def get_queryset(self):
+        qs = ProductionBatch.objects.select_related("status", "assigned_operator").prefetch_related("orders__items", "orders__status").all()
+        target_press = self.request.query_params.get("target_press")
+        status_param = self.request.query_params.get("status")
+        if target_press and target_press != "ALL":
+            qs = qs.filter(target_press=target_press)
+        if status_param and status_param != "ALL":
+            qs = qs.filter(status__code=status_param)
+        return qs.distinct()
 
     def create(self, request, *args, **kwargs):
         """
@@ -205,9 +228,111 @@ class ProductionBatchViewSet(viewsets.ModelViewSet):
     def eligible_orders(self, request):
         """
         GET /api/v1/production/batches/eligible-orders/
-        Returns verified orders ready to be grouped into production batches.
+        Returns verified orders ready to be grouped into production batches (excluding orders already assigned to a batch).
         """
         orders = Order.objects.filter(
             status__code__in=["PREPRESS_PASSED", "PREPRESS_QUEUED", "RECEIVED"]
-        ).prefetch_related("items")
+        ).exclude(
+            production_batches__isnull=False
+        ).prefetch_related("items", "status")
         return Response(OrderSerializer(orders, many=True).data)
+
+    @action(detail=False, methods=["get"], url_path="batched-orders")
+    def batched_orders(self, request):
+        """
+        GET /api/v1/production/batches/batched-orders/
+        Returns a flat list of all orders assigned to production batches,
+        with complete batch metadata for immediate lookup.
+        """
+        batches = ProductionBatch.objects.select_related("status", "assigned_operator").prefetch_related("orders__items", "orders__status").all()
+        search = request.query_params.get("search", "").strip().lower()
+        
+        results = []
+        for b in batches:
+            for ord_obj in b.orders.all():
+                if search:
+                    match = (
+                        search in (ord_obj.order_number or "").lower()
+                        or search in (ord_obj.peecho_order_id or "").lower()
+                        or search in (ord_obj.customer_name or "").lower()
+                        or search in (b.batch_number or "").lower()
+                    )
+                    if not match:
+                        continue
+                
+                ord_data = OrderSerializer(ord_obj).data
+                ord_data["batch"] = {
+                    "id": str(b.id),
+                    "batch_number": b.batch_number,
+                    "target_press": b.target_press,
+                    "press_label": b.get_target_press_display(),
+                    "paper_stock": b.paper_stock,
+                    "size_format": b.size_format,
+                    "binding_type": b.binding_type,
+                    "binding_label": b.get_binding_type_display(),
+                    "status": b.status.code if b.status else None,
+                    "status_name": b.status.name if b.status else None,
+                    "status_color": b.status.badge_color if b.status else "slate",
+                    "badge_bg": b.status.badge_bg if b.status else "#F1F5F9",
+                    "badge_text": b.status.badge_text if b.status else "#475569",
+                    "total_sheets_count": b.total_sheets_count,
+                    "created_at": b.created_at,
+                    "job_ticket_pdf_url": b.job_ticket_pdf_url,
+                }
+                results.append(ord_data)
+        return Response(results)
+
+
+class PrintMachineViewSet(viewsets.ModelViewSet):
+    """
+    CRUD ViewSet for Target Print Machines.
+    Supports listing, adding, editing, and deleting print machines.
+    """
+    queryset = PrintMachine.objects.all().order_by("name")
+    serializer_class = PrintMachineSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["code", "name", "description", "sheet_format"]
+    ordering_fields = ["name", "code", "created_at", "is_active", "sheet_format", "max_speed_cph"]
+    ordering = ["name"]
+
+    def paginate_queryset(self, queryset):
+        if self.request.query_params.get("all") == "true":
+            return None
+        return super().paginate_queryset(queryset)
+
+    def get_queryset(self):
+        qs = PrintMachine.objects.all()
+        active_only = self.request.query_params.get("active_only") or self.request.query_params.get("is_active")
+        if active_only is not None and active_only.lower() in ("true", "1"):
+            qs = qs.filter(is_active=True)
+        elif active_only is not None and active_only.lower() in ("false", "0"):
+            qs = qs.filter(is_active=False)
+        return qs.order_by("name")
+
+
+class BindingMethodViewSet(viewsets.ModelViewSet):
+    """
+    CRUD ViewSet for Binding Methods.
+    Supports listing, adding, editing, and deleting binding methods.
+    """
+    queryset = BindingMethod.objects.all().order_by("name")
+    serializer_class = BindingMethodSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["code", "name", "description"]
+    ordering_fields = ["name", "code", "created_at", "is_active", "min_pages", "max_pages"]
+    ordering = ["name"]
+
+    def paginate_queryset(self, queryset):
+        if self.request.query_params.get("all") == "true":
+            return None
+        return super().paginate_queryset(queryset)
+
+    def get_queryset(self):
+        qs = BindingMethod.objects.all()
+        active_only = self.request.query_params.get("active_only") or self.request.query_params.get("is_active")
+        if active_only is not None and active_only.lower() in ("true", "1"):
+            qs = qs.filter(is_active=True)
+        elif active_only is not None and active_only.lower() in ("false", "0"):
+            qs = qs.filter(is_active=False)
+        return qs.order_by("name")
+

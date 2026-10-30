@@ -16,6 +16,7 @@ import {
   ExternalLink,
   Layers,
   FileText,
+  FileCheck2,
   Truck,
   CheckCircle2,
   Eye,
@@ -30,8 +31,14 @@ import {
   Check,
   Printer,
   Cpu,
+  Lock,
+  ShieldAlert,
+  ShieldCheck,
+  ChevronRight,
+  Maximize2,
 } from "lucide-react";
-import { ordersApi, lookupsApi, Order, OrderItem, EntityStatus, UserAuditLog } from "@/services/api";
+import Link from "next/link";
+import { ordersApi, lookupsApi, Order, OrderItem, EntityStatus, UserAuditLog, ArtworkDocument, StaffUser } from "@/services/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -39,6 +46,51 @@ import { Table, Column } from "@/components/ui/table";
 import { StatCard } from "@/components/ui/stat-card";
 import { Modal } from "@/components/ui/modal";
 import { useNotifications } from "@/context/notification-context";
+import {
+  ROLE_ACCESS_PROFILES,
+  RoleAccessProfile,
+  getRoleOrderPermission,
+  isStatusAllowedForRole,
+  isOrderRelevantForRole,
+  RoleOrderPermission,
+  getWorkstationQueue,
+  WorkstationQueueDefinition,
+  WORKSTATION_QUEUES,
+} from "@/components/layout/navigation-config";
+
+// Sequential Pipeline Definition
+export const PIPELINE_SEQUENCE = [
+  { code: "RECEIVED", name: "Order Received", step: 1 },
+  { code: "PREPRESS_QUEUED", name: "Prepress Queued", step: 2 },
+  { code: "PREPRESS_PASSED", name: "Prepress Approved", step: 3 },
+  { code: "BATCHED", name: "Batched for Press", step: 4 },
+  { code: "IN_PRODUCTION", name: "In Production", step: 5 },
+  { code: "PRINTING", name: "Printing Press", step: 6 },
+  { code: "QUALITY_AUDIT", name: "Quality Audit", step: 7 },
+  { code: "PACKED", name: "Packed", step: 8 },
+  { code: "READY_FOR_DISPATCH", name: "Ready for Dispatch", step: 9 },
+  { code: "DISPATCHED", name: "Dispatched", step: 10 },
+  { code: "IN_TRANSIT", name: "In Transit", step: 11 },
+  { code: "OUT_FOR_DELIVERY", name: "Out for Delivery", step: 12 },
+  { code: "DELIVERED", name: "Delivered", step: 13 },
+];
+
+export const PIPELINE_STEP_MAP: Record<string, number> = {
+  RECEIVED: 1,
+  PREPRESS_QUEUED: 2,
+  PREPRESS_PASSED: 3,
+  BATCHED: 4,
+  IN_PRODUCTION: 5,
+  PRINTING: 6,
+  QUALITY_AUDIT: 7,
+  PRODUCTION_COMPLETED: 8,
+  PACKED: 8,
+  READY_FOR_DISPATCH: 9,
+  DISPATCHED: 10,
+  IN_TRANSIT: 11,
+  OUT_FOR_DELIVERY: 12,
+  DELIVERED: 13,
+};
 
 // Helper component for Live SLA Countdown Clock
 function SlaCountdownClock({ deadlineStr }: { deadlineStr: string }) {
@@ -121,7 +173,7 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [sourceFilter, setSourceFilter] = useState<string>("ALL");
   const [dateFilter, setDateFilter] = useState<string>("ALL");
-  const [sortBy, setSortBy] = useState<"sla" | "newest" | "amount" | "order_number">("sla");
+  const [sortBy, setSortBy] = useState<"sla" | "newest" | "amount" | "order_number">("newest");
 
   // In-App Alert Notification State for New Orders
   const [newOrderAlert, setNewOrderAlert] = useState<Order | null>(null);
@@ -135,6 +187,83 @@ export default function OrdersPage() {
   const [simulateSource, setSimulateSource] = useState<"printify" | "peecho" | "custom_api" | "manual">("printify");
   const [transitionStatusCode, setTransitionStatusCode] = useState("");
   const [transitionComment, setTransitionComment] = useState("");
+  const [adminOverrideApproved, setAdminOverrideApproved] = useState(false);
+
+  // Multi-Document PDF Preview Modal State
+  const [documentPreviewModal, setDocumentPreviewModal] = useState<{
+    isOpen: boolean;
+    orderNumber: string;
+    productType: string;
+    documents: ArtworkDocument[];
+    activeDocId: string;
+  } | null>(null);
+
+  // Current User & Admin role detection
+  const [currentUser, setCurrentUser] = useState<StaffUser | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("silverpoint_user");
+      if (stored) {
+        try {
+          setCurrentUser(JSON.parse(stored));
+        } catch (e) {}
+      }
+    }
+  }, []);
+
+  const userRole = useMemo(() => {
+    if (!currentUser) return "SUPER_ADMIN";
+    return (
+      currentUser.role_details?.code ||
+      (typeof currentUser.role === "string" ? currentUser.role : null) ||
+      (currentUser.is_superuser ? "SUPER_ADMIN" : "STAFF")
+    );
+  }, [currentUser]);
+
+  const isAdmin = useMemo(() => {
+    if (!currentUser) return false;
+    return Boolean(
+      currentUser.is_superuser ||
+      currentUser.is_staff ||
+      userRole === "SUPER_ADMIN" ||
+      userRole === "ADMIN"
+    );
+  }, [currentUser, userRole]);
+
+  // Workstation Queue Tabs: "all" (All Orders, default) vs "pending" (Action Required) vs "processed" (Completed/Archive)
+  const [orderQueueTab, setOrderQueueTab] = useState<"all" | "pending" | "processed">("all");
+  const [adminStationView, setAdminStationView] = useState<string>("ALL");
+
+  const effectiveRole = useMemo(() => {
+    if (isAdmin && adminStationView !== "ALL") {
+      return adminStationView;
+    }
+    return userRole;
+  }, [isAdmin, adminStationView, userRole]);
+
+  const rolePerm = useMemo(() => {
+    return getRoleOrderPermission(effectiveRole);
+  }, [effectiveRole]);
+
+  const wsQueue = useMemo(() => {
+    return getWorkstationQueue(effectiveRole);
+  }, [effectiveRole]);
+
+  const roleProfile = useMemo(() => {
+    return ROLE_ACCESS_PROFILES[effectiveRole] || null;
+  }, [effectiveRole]);
+
+  // Default to Station View for non-admins, All for admins
+  const [stationScope, setStationScope] = useState<"STATION" | "ALL">("STATION");
+  const [isStationScopeInitialized, setIsStationScopeInitialized] = useState(false);
+
+  useEffect(() => {
+    if (currentUser && !isStationScopeInitialized) {
+      setStationScope(isAdmin ? "ALL" : "STATION");
+      setIsStationScopeInitialized(true);
+    }
+  }, [currentUser, isAdmin, isStationScopeInitialized]);
 
   // Visual auto-sync feedback alert inside modal
   const [syncAlert, setSyncAlert] = useState<{
@@ -143,15 +272,26 @@ export default function OrdersPage() {
     timestamp: string;
   } | null>(null);
 
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
+  // Reset to page 1 on filter changes or tab switches
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, urgencyFilter, statusFilter, sourceFilter, dateFilter, orderQueueTab, adminStationView]);
+
   // Queries - Real-time polling every 5 seconds for instant sync
   const { data: ordersData, isLoading: ordersLoading, refetch: refetchOrders } = useQuery({
-    queryKey: ["orders", searchQuery, urgencyFilter, statusFilter, sourceFilter],
+    queryKey: ["orders", searchQuery, urgencyFilter, statusFilter, sourceFilter, adminStationView],
     queryFn: () =>
       ordersApi.getOrders({
         search: searchQuery || undefined,
         urgency: urgencyFilter || undefined,
         status: statusFilter === "ALL" ? undefined : statusFilter || undefined,
         source: sourceFilter === "ALL" ? undefined : sourceFilter,
+        page_size: 100,
+        ordering: "-created_at",
       }),
     refetchInterval: 5000,
   });
@@ -195,10 +335,12 @@ export default function OrdersPage() {
         (typeof selectedOrder.status === "string" ? selectedOrder.status : "");
       setTransitionStatusCode(code);
       setTransitionComment("");
+      setAdminOverrideApproved(false);
       setSyncAlert(null);
     } else {
       setTransitionStatusCode("");
       setTransitionComment("");
+      setAdminOverrideApproved(false);
       setSyncAlert(null);
     }
   }, [selectedOrder?.id, selectedOrder?.status_details?.code, selectedOrder?.status]);
@@ -245,11 +387,33 @@ export default function OrdersPage() {
         });
       }
     },
+    onError: (err: any) => {
+      const errMsg =
+        err?.response?.data?.error ||
+        err?.response?.data?.detail ||
+        err?.message ||
+        "Failed to simulate incoming order.";
+      addNotification({
+        title: "Order Creation Failed",
+        message: errMsg,
+        type: "error",
+        category: "ORDER_INCOMING",
+      });
+    },
   });
 
   const updateStatusMutation = useMutation({
-    mutationFn: ({ orderId, statusCode, comments }: { orderId: string; statusCode: string; comments: string }) =>
-      ordersApi.updateOrderStatus(orderId, statusCode, comments),
+    mutationFn: ({
+      orderId,
+      statusCode,
+      comments,
+      adminApproved,
+    }: {
+      orderId: string;
+      statusCode: string;
+      comments: string;
+      adminApproved?: boolean;
+    }) => ordersApi.updateOrderStatus(orderId, statusCode, comments, adminApproved),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
       queryClient.invalidateQueries({ queryKey: ["orders-metrics"] });
@@ -260,6 +424,7 @@ export default function OrdersPage() {
         (typeof data.order?.status === "string" ? data.order.status : "");
       setTransitionStatusCode(newCode);
       setTransitionComment("");
+      setAdminOverrideApproved(false);
 
       const targetStatusName =
         data.order?.status_details?.name ||
@@ -286,6 +451,7 @@ export default function OrdersPage() {
     onError: (err: any) => {
       const errMsg =
         err?.response?.data?.detail ||
+        err?.response?.data?.error ||
         err?.message ||
         "Failed to update status and synchronize with Peecho.";
       setSyncAlert({
@@ -294,7 +460,7 @@ export default function OrdersPage() {
         timestamp: new Date().toLocaleTimeString(),
       });
       addNotification({
-        title: "Status Auto-Sync Failed",
+        title: "Status Update Denied",
         message: errMsg,
         type: "error",
         category: "STATUS_SYNC",
@@ -302,9 +468,26 @@ export default function OrdersPage() {
     },
   });
 
-  // Client-side date and sort filtering
+  // Count of orders strictly relevant to user's station
+  const stationOrdersCount = useMemo(() => {
+    const list = ordersData?.results || [];
+    return list.filter((order) => {
+      const statusCode = (order.status_details?.code || order.status || "").toUpperCase();
+      return isOrderRelevantForRole(effectiveRole, statusCode);
+    }).length;
+  }, [ordersData?.results, effectiveRole]);
+
+  // Client-side date, station scope, and sort filtering
   const processedOrders = useMemo(() => {
     let list = [...(ordersData?.results || [])];
+
+    // Station Scope filter (only filter when in STATION scope or admin filtered to a station)
+    if (stationScope === "STATION" || (isAdmin && adminStationView !== "ALL")) {
+      list = list.filter((ord) => {
+        const statusCode = (ord.status_details?.code || ord.status || "").toUpperCase();
+        return isOrderRelevantForRole(effectiveRole, statusCode);
+      });
+    }
 
     // Date filter
     if (dateFilter !== "ALL") {
@@ -324,23 +507,51 @@ export default function OrdersPage() {
 
     // Sort
     list.sort((a, b) => {
-      if (sortBy === "sla") {
-        return new Date(a.sla_deadline).getTime() - new Date(b.sla_deadline).getTime();
-      }
       if (sortBy === "newest") {
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }
+      if (sortBy === "sla") {
+        return new Date(a.sla_deadline).getTime() - new Date(b.sla_deadline).getTime();
       }
       if (sortBy === "amount") {
         return Number(b.total_amount || 0) - Number(a.total_amount || 0);
       }
       if (sortBy === "order_number") {
-        return a.order_number.localeCompare(b.order_number);
+        return b.order_number.localeCompare(a.order_number);
       }
-      return 0;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
 
     return list;
-  }, [ordersData?.results, dateFilter, sortBy]);
+  }, [ordersData?.results, isAdmin, adminStationView, stationScope, effectiveRole, dateFilter, sortBy]);
+
+  // Partition into Pending (Action Required, highlighted) and Processed (Completed / Approved / Rejected)
+  const { pendingOrdersList, processedOrdersList } = useMemo(() => {
+    const pending: Order[] = [];
+    const processed: Order[] = [];
+
+    processedOrders.forEach((ord) => {
+      const code = (ord.status_details?.code || ord.status || "").toUpperCase();
+      if (wsQueue.pendingStatuses.includes(code)) {
+        pending.push(ord);
+      } else {
+        processed.push(ord);
+      }
+    });
+
+    return { pendingOrdersList: pending, processedOrdersList: processed };
+  }, [processedOrders, wsQueue.pendingStatuses]);
+
+  const activeDisplayOrders = useMemo(() => {
+    if (orderQueueTab === "pending") return pendingOrdersList;
+    if (orderQueueTab === "processed") return processedOrdersList;
+    return processedOrders;
+  }, [orderQueueTab, pendingOrdersList, processedOrdersList, processedOrders]);
+
+  const paginatedOrders = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return activeDisplayOrders.slice(start, start + pageSize);
+  }, [activeDisplayOrders, currentPage, pageSize]);
 
   // Table Column Definitions
   const orderColumns: Column<Order>[] = [
@@ -458,19 +669,86 @@ export default function OrdersPage() {
     },
     {
       header: "Action",
-      cell: (ord) => (
-        <Button
-          size="sm"
-          variant="outline"
-          leftIcon={<Eye className="w-3.5 h-3.5 text-[#0073EA]" />}
-          onClick={() => {
-            setSelectedOrder(ord);
-            setOrderModalTab("details");
-          }}
-        >
-          View Order
-        </Button>
-      ),
+      cell: (ord) => {
+        const statusCode = (ord.status_details?.code || ord.status || "").toUpperCase();
+        const isPrepress = effectiveRole === "PREPRESS_SPECIALIST";
+        const isPendingPrepress = isPrepress && ["RECEIVED", "PREPRESS_QUEUED", "PENDING_PREPRESS"].includes(statusCode);
+
+        if (isPendingPrepress && orderQueueTab === "pending") {
+          return (
+            <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+              <Button
+                size="sm"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs h-7 px-2.5 shadow-2xs"
+                isLoading={updateStatusMutation.isPending && selectedOrder?.id === ord.id}
+                leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                onClick={() => {
+                  setSelectedOrder(ord);
+                  updateStatusMutation.mutate({
+                    orderId: ord.id,
+                    statusCode: "PREPRESS_PASSED",
+                    comments: "Artwork verified and approved for production floor.",
+                  });
+                }}
+                title="Approve digital proof and forward to Production Floor"
+              >
+                Approve
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-xs h-7 px-2 text-rose-700 border-rose-200 hover:bg-rose-50 font-semibold"
+                onClick={() => {
+                  setSelectedOrder(ord);
+                  updateStatusMutation.mutate({
+                    orderId: ord.id,
+                    statusCode: "EXCEPTION_HOLD",
+                    comments: "Artwork rejected or placed on exception hold",
+                  });
+                }}
+                title="Reject proof or flag on exception hold"
+              >
+                Reject
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                leftIcon={<Eye className="w-3.5 h-3.5 text-[#0073EA]" />}
+                className="text-xs h-7 px-2"
+                onClick={() => {
+                  setSelectedOrder(ord);
+                  setOrderModalTab("details");
+                }}
+                title="Inspect order details and PDF proof"
+              >
+                Inspect
+              </Button>
+            </div>
+          );
+        }
+
+        return (
+          <div className="flex items-center gap-1.5">
+            <Button
+              size="sm"
+              variant="outline"
+              leftIcon={<Eye className="w-3.5 h-3.5 text-[#0073EA]" />}
+              className="text-xs h-7 px-2.5"
+              onClick={() => {
+                setSelectedOrder(ord);
+                setOrderModalTab("details");
+              }}
+            >
+              View Order
+            </Button>
+            {orderQueueTab === "processed" && (
+              <span className="text-[10px] text-slate-400 font-medium px-1">
+                Completed
+              </span>
+            )}
+          </div>
+        );
+      },
     },
   ];
 
@@ -588,6 +866,75 @@ export default function OrdersPage() {
         />
       </div>
 
+      {/* Station Scope & Designation Banner */}
+      <div className="bg-white p-4 rounded-xl border border-blue-200/90 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3 bg-gradient-to-r from-blue-50/50 via-white to-slate-50">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-blue-100 text-[#0073EA] border border-blue-200 flex items-center justify-center shrink-0 shadow-2xs">
+            <ShieldCheck className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-bold text-slate-900 text-sm">
+                {rolePerm.stationName}
+              </span>
+              <Badge variant={roleProfile?.badgeVariant || "primary"} size="sm" dot={true}>
+                {roleProfile?.designation || userRole}
+              </Badge>
+              <span className="text-[10px] text-slate-400 font-mono">
+                ({rolePerm.department})
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {isAdmin
+                ? "Full administrative platform access. Viewing all production and fulfillment pipelines."
+                : `Station View Active: ${rolePerm.description}`}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 self-start md:self-auto">
+          <span className="text-xs font-semibold text-slate-500">View Scope:</span>
+          <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-100 text-xs font-medium">
+            <button
+              onClick={() => {
+                setStationScope("STATION");
+                setCurrentPage(1);
+              }}
+              className={`px-3 py-1.5 rounded-md font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                stationScope === "STATION"
+                  ? "bg-[#0073EA] text-white shadow-2xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <span>My Station Orders</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                stationScope === "STATION" ? "bg-white/20 text-white" : "bg-white text-slate-600 border border-slate-200"
+              }`}>
+                {stationOrdersCount}
+              </span>
+            </button>
+            <button
+              onClick={() => {
+                setStationScope("ALL");
+                setCurrentPage(1);
+              }}
+              className={`px-3 py-1.5 rounded-md font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                stationScope === "ALL"
+                  ? "bg-[#0073EA] text-white shadow-2xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <span>All Orders</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                stationScope === "ALL" ? "bg-white/20 text-white" : "bg-white text-slate-600 border border-slate-200"
+              }`}>
+                {ordersData?.count || 0}
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Unified Filters Bar */}
       <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -596,6 +943,12 @@ export default function OrdersPage() {
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
+              name="orders_search_filter"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              data-lpignore="true"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search order number, customer name, city..."
@@ -637,94 +990,361 @@ export default function OrdersPage() {
               onChange={(e) => setSortBy(e.target.value as any)}
               className="bg-slate-50 border border-slate-200 rounded-md px-2 py-1 text-xs text-slate-700 font-medium"
             >
+              <option value="newest">Date Created (Newest First)</option>
               <option value="sla">Delivery Deadline (Urgent First)</option>
-              <option value="newest">Date Created (Newest)</option>
               <option value="amount">Order Amount (High to Low)</option>
-              <option value="order_number">Order Number</option>
+              <option value="order_number">Order Number (Desc)</option>
             </select>
           </div>
         </div>
 
-        {/* Origin Channel Filter Tabs */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100 text-xs">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-slate-400 font-semibold uppercase text-[10px] mr-1 flex items-center gap-1">
-              <Filter className="w-3 h-3" /> Origin Channel:
-            </span>
-            {[
-              { id: "ALL", label: "All Sources" },
-              { id: "printify", label: "Printify POD", icon: <Printer className="w-3 h-3 text-emerald-600" /> },
-              { id: "peecho", label: "Peecho POD", icon: <Globe2 className="w-3 h-3 text-[#0073EA]" /> },
-              { id: "custom_api", label: "Custom API", icon: <Cpu className="w-3 h-3 text-purple-600" /> },
-              { id: "manual", label: "In-House Manual", icon: <Layers className="w-3 h-3 text-slate-500" /> },
-            ].map((ch) => (
-              <button
-                key={ch.id}
-                onClick={() => setSourceFilter(ch.id)}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-all cursor-pointer ${
-                  sourceFilter === ch.id
-                    ? "bg-slate-900 text-white border-slate-900 shadow-xs font-bold"
-                    : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                }`}
+        {/* Dropdown Filters Row */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2.5 border-t border-slate-100 text-xs">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Origin Channel Dropdown */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-500 font-semibold uppercase text-[10px] flex items-center gap-1">
+                <Filter className="w-3 h-3 text-slate-400" /> Origin Channel:
+              </span>
+              <select
+                value={sourceFilter}
+                onChange={(e) => {
+                  setSourceFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#0073EA]/20 focus:border-[#0073EA] transition-all cursor-pointer"
               >
-                {ch.icon}
-                {ch.label}
-              </button>
-            ))}
-          </div>
-        </div>
+                <option value="ALL">All Channels</option>
+                <option value="printify">Printify POD</option>
+                <option value="peecho">Peecho POD</option>
+                <option value="custom_api">Custom B2B API</option>
+                <option value="manual">In-House Manual</option>
+              </select>
+            </div>
 
-        {/* SLA & Status Filter Row */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100 text-xs">
-          {/* SLA Pills */}
-          <div className="flex flex-wrap items-center gap-1">
-            <span className="text-slate-400 font-semibold uppercase text-[10px] mr-1">Deadline:</span>
-            {[
-              { id: "", label: "All Deadlines" },
-              { id: "critical", label: "Urgent (< 4h)" },
-              { id: "urgent", label: "Next 12h" },
-              { id: "normal", label: "Normal" },
-              { id: "breached", label: "Overdue" },
-            ].map((pill) => (
-              <button
-                key={pill.id}
-                onClick={() => setUrgencyFilter(pill.id)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all cursor-pointer ${
-                  urgencyFilter === pill.id
-                    ? "bg-[#0073EA] text-white border-[#0073EA] shadow-xs"
-                    : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                }`}
+            {/* Deadline Dropdown */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-500 font-semibold uppercase text-[10px] flex items-center gap-1">
+                <Clock className="w-3 h-3 text-slate-400" /> Deadline:
+              </span>
+              <select
+                value={urgencyFilter}
+                onChange={(e) => {
+                  setUrgencyFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#0073EA]/20 focus:border-[#0073EA] transition-all cursor-pointer"
               >
-                {pill.label}
-              </button>
-            ))}
+                <option value="">All Deadlines</option>
+                <option value="critical">Urgent (&lt; 4h remaining)</option>
+                <option value="urgent">Next 12h</option>
+                <option value="normal">Normal (&gt; 12h)</option>
+                <option value="breached">Overdue</option>
+              </select>
+            </div>
+
+            {/* Dynamic Status Dropdown */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-500 font-semibold uppercase text-[10px] flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3 text-slate-400" /> Status:
+              </span>
+              <select
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#0073EA]/20 focus:border-[#0073EA] transition-all cursor-pointer"
+              >
+                <option value="ALL">All Statuses</option>
+                {statusesData?.results?.map((st) => (
+                  <option key={st.id} value={st.code}>
+                    {st.name} ({st.code})
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          {/* Dynamic Status Dropdown */}
-          <div className="flex items-center gap-2">
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 focus:outline-none"
+          {/* Quick Filter Reset */}
+          {(sourceFilter !== "ALL" || urgencyFilter !== "" || statusFilter !== "ALL" || dateFilter !== "ALL" || searchQuery) && (
+            <button
+              type="button"
+              onClick={() => {
+                setSourceFilter("ALL");
+                setUrgencyFilter("");
+                setStatusFilter("ALL");
+                setDateFilter("ALL");
+                setSearchQuery("");
+                setCurrentPage(1);
+              }}
+              className="text-xs text-slate-500 hover:text-[#0073EA] font-semibold flex items-center gap-1 transition-colors cursor-pointer"
             >
-              <option value="ALL">All Statuses</option>
-              {statusesData?.results?.map((st) => (
-                <option key={st.id} value={st.code}>
-                  {st.name} ({st.code})
-                </option>
-              ))}
-            </select>
+              <X className="w-3.5 h-3.5" />
+              <span>Reset Filters</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Station Queue Header & Two Main Action Tabs */}
+      <div className="space-y-3">
+        {/* Workstation Identification & Quick Role Preview for Admins */}
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-slate-200/90 shadow-2xs">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#0073EA]/10 to-indigo-100 text-[#0073EA] flex items-center justify-center font-bold shadow-2xs shrink-0">
+              {effectiveRole === "PREPRESS_SPECIALIST" ? (
+                <Layers className="w-5 h-5 text-[#0073EA]" />
+              ) : effectiveRole === "SHOPFLOOR_OPERATOR" ? (
+                <Printer className="w-5 h-5 text-emerald-600" />
+              ) : effectiveRole === "PRODUCTION_MANAGER" ? (
+                <Sparkles className="w-5 h-5 text-purple-600" />
+              ) : effectiveRole === "DISPATCH_SPECIALIST" || effectiveRole === "DISPATCH_FINANCE_SPECIALIST" ? (
+                <Truck className="w-5 h-5 text-sky-600" />
+              ) : (
+                <ShieldCheck className="w-5 h-5 text-slate-800" />
+              )}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-slate-900 tracking-tight">
+                  {wsQueue.stationName}
+                </h3>
+                <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-semibold">
+                  {wsQueue.department}
+                </span>
+                {isAdmin && (
+                  <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[10px] font-bold border border-purple-200">
+                    Admin Active
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {orderQueueTab === "pending" ? wsQueue.pendingSubtitle : wsQueue.processedSubtitle}
+              </p>
+            </div>
           </div>
+
+          {/* Admin Station Switcher: Enables admin to preview the factory from the eyes of any operator */}
+          {isAdmin && (
+            <div className="flex items-center gap-1.5 bg-slate-100/80 p-1 rounded-lg border border-slate-200/80 text-xs">
+              <span className="text-[11px] font-semibold text-slate-500 px-2">Workstation Queue View:</span>
+              {[
+                { id: "ALL", label: "Master Flow" },
+                { id: "PREPRESS_SPECIALIST", label: "🎨 Prepress (Artwork)" },
+                { id: "SHOPFLOOR_OPERATOR", label: "🖨️ Press Floor" },
+                { id: "DISPATCH_SPECIALIST", label: "📦 Shipping" },
+              ].map((st) => (
+                <button
+                  key={st.id}
+                  onClick={() => {
+                    setAdminStationView(st.id);
+                    setCurrentPage(1);
+                  }}
+                  className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                    adminStationView === st.id
+                      ? "bg-white text-slate-900 shadow-2xs border border-slate-200"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  {st.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* The Three Queue Tabs: All Pipeline (Default), Pending Action, and Processed History */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* Tab 0: ALL PIPELINE ORDERS (Default) */}
+          <button
+            type="button"
+            onClick={() => {
+              setOrderQueueTab("all");
+              setCurrentPage(1);
+            }}
+            className={`group relative text-left p-4 rounded-xl border transition-all cursor-pointer ${
+              orderQueueTab === "all"
+                ? "bg-gradient-to-r from-blue-50/90 via-white to-blue-50/60 border-[#0073EA] ring-2 ring-[#0073EA]/20 shadow-xs"
+                : "bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/60"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Layers className={`w-3.5 h-3.5 ${orderQueueTab === "all" ? "text-[#0073EA]" : "text-slate-400"}`} />
+                <span
+                  className={`text-xs uppercase tracking-wider font-bold ${
+                    orderQueueTab === "all" ? "text-[#0073EA]" : "text-slate-600"
+                  }`}
+                >
+                  All Orders
+                </span>
+              </div>
+              <span
+                className={`px-2.5 py-0.5 rounded-full text-xs font-mono font-bold ${
+                  orderQueueTab === "all"
+                    ? "bg-[#0073EA] text-white shadow-2xs"
+                    : "bg-slate-100 text-slate-700"
+                }`}
+              >
+                {processedOrders.length} {processedOrders.length === 1 ? "Order" : "Orders"}
+              </span>
+            </div>
+
+            <h4 className="mt-2 text-sm font-bold text-slate-900 flex items-center gap-1.5">
+              <span>All Pipeline Orders</span>
+              {orderQueueTab === "all" && (
+                <span className="text-[10px] font-bold text-[#0073EA] bg-blue-100/80 px-2 py-0.5 rounded-md">
+                  Active
+                </span>
+              )}
+            </h4>
+            <p className="mt-1 text-xs text-slate-500 line-clamp-1">
+              Every active customer order across all stations and production phases
+            </p>
+          </button>
+
+          {/* Tab 1: PENDING ACTION */}
+          <button
+            type="button"
+            onClick={() => {
+              setOrderQueueTab("pending");
+              setCurrentPage(1);
+            }}
+            className={`group relative text-left p-4 rounded-xl border transition-all cursor-pointer ${
+              orderQueueTab === "pending"
+                ? "bg-gradient-to-r from-blue-50/90 via-white to-indigo-50/60 border-[#0073EA] ring-2 ring-[#0073EA]/20 shadow-xs"
+                : "bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/60"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div
+                  className={`w-2.5 h-2.5 rounded-full ${
+                    pendingOrdersList.length > 0
+                      ? "bg-amber-500 animate-pulse ring-4 ring-amber-100"
+                      : "bg-emerald-500"
+                  }`}
+                />
+                <span
+                  className={`text-xs uppercase tracking-wider font-bold ${
+                    orderQueueTab === "pending" ? "text-[#0073EA]" : "text-slate-600"
+                  }`}
+                >
+                  Action Required
+                </span>
+              </div>
+              <span
+                className={`px-2.5 py-0.5 rounded-full text-xs font-mono font-bold ${
+                  orderQueueTab === "pending"
+                    ? "bg-[#0073EA] text-white shadow-2xs"
+                    : "bg-slate-100 text-slate-700"
+                }`}
+              >
+                {pendingOrdersList.length} {pendingOrdersList.length === 1 ? "Order" : "Orders"}
+              </span>
+            </div>
+
+            <h4 className="mt-2 text-sm font-bold text-slate-900 flex items-center gap-1.5">
+              <span>{wsQueue.pendingLabel}</span>
+              {orderQueueTab === "pending" && (
+                <span className="text-[10px] font-bold text-[#0073EA] bg-blue-100/80 px-2 py-0.5 rounded-md">
+                  Active
+                </span>
+              )}
+            </h4>
+            <p className="mt-1 text-xs text-slate-500 line-clamp-1">
+              {wsQueue.pendingSubtitle}
+            </p>
+          </button>
+
+          {/* Tab 2: PROCESSED / COMPLETED (Archived & Handed Over) */}
+          <button
+            type="button"
+            onClick={() => {
+              setOrderQueueTab("processed");
+              setCurrentPage(1);
+            }}
+            className={`group relative text-left p-4 rounded-xl border transition-all cursor-pointer ${
+              orderQueueTab === "processed"
+                ? "bg-slate-900 border-slate-900 text-white shadow-xs"
+                : "bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/60"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckCircle2
+                  className={`w-3.5 h-3.5 ${
+                    orderQueueTab === "processed" ? "text-emerald-400" : "text-slate-400"
+                  }`}
+                />
+                <span
+                  className={`text-xs uppercase tracking-wider font-bold ${
+                    orderQueueTab === "processed" ? "text-slate-300" : "text-slate-500"
+                  }`}
+                >
+                  Processed History
+                </span>
+              </div>
+              <span
+                className={`px-2.5 py-0.5 rounded-full text-xs font-mono font-bold ${
+                  orderQueueTab === "processed"
+                    ? "bg-slate-800 text-white border border-slate-700"
+                    : "bg-slate-100 text-slate-700"
+                }`}
+              >
+                {processedOrdersList.length} {processedOrdersList.length === 1 ? "Order" : "Orders"}
+              </span>
+            </div>
+
+            <h4
+              className={`mt-2 text-sm font-bold flex items-center gap-1.5 ${
+                orderQueueTab === "processed" ? "text-white" : "text-slate-900"
+              }`}
+            >
+              <span>{wsQueue.processedLabel}</span>
+              {orderQueueTab === "processed" && (
+                <span className="text-[10px] font-bold text-slate-300 bg-slate-800 px-2 py-0.5 rounded-md">
+                  Active
+                </span>
+              )}
+            </h4>
+            <p
+              className={`mt-1 text-xs line-clamp-1 ${
+                orderQueueTab === "processed" ? "text-slate-400" : "text-slate-500"
+              }`}
+            >
+              {wsQueue.processedSubtitle}
+            </p>
+          </button>
         </div>
       </div>
 
       {/* Main Orders Table */}
       <Card noPadding={true}>
         <Table
-          data={processedOrders}
+          data={paginatedOrders}
           columns={orderColumns}
           keyExtractor={(ord) => ord.id}
           isLoading={ordersLoading}
+          emptyMessage={
+            orderQueueTab === "pending"
+              ? `All caught up! No pending orders awaiting action in ${wsQueue.stationName}.`
+              : orderQueueTab === "processed"
+              ? `No processed orders found in this station archive.`
+              : `No orders found matching the active filters.`
+          }
+          pagination={{
+            currentPage,
+            totalPages: Math.ceil(activeDisplayOrders.length / pageSize) || 1,
+            totalCount: activeDisplayOrders.length,
+            pageSize,
+            onPageChange: (p) => setCurrentPage(p),
+            onPageSizeChange: (s) => {
+              setPageSize(s);
+              setCurrentPage(1);
+            },
+          }}
         />
       </Card>
 
@@ -1033,33 +1653,101 @@ export default function OrdersPage() {
                           </div>
                         </div>
 
-                        {/* Direct File Download Buttons */}
-                        <div className="flex flex-wrap items-center gap-2 pt-1">
-                          {item.pdf_artwork_url && (
-                            <a
-                              href={item.pdf_artwork_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              download={`${selectedOrder.order_number}_content.pdf`}
-                              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#0073EA] bg-blue-50 border border-blue-200 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors shadow-xs"
-                            >
-                              <Download className="w-3.5 h-3.5" />
-                              <span>Download Book Interior (PDF)</span>
-                            </a>
-                          )}
-                          {item.pdf_cover_url && (
-                            <a
-                              href={item.pdf_cover_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              download={`${selectedOrder.order_number}_cover.pdf`}
-                              className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-700 bg-purple-50 border border-purple-200 hover:bg-purple-100 px-3 py-1.5 rounded-lg transition-colors shadow-xs"
-                            >
-                              <Download className="w-3.5 h-3.5" />
-                              <span>Download Book Cover (PDF)</span>
-                            </a>
-                          )}
-                        </div>
+                        {/* Artwork & Prepress Documents (Multiple Documents Support) */}
+                        {(() => {
+                          const itemDocs: ArtworkDocument[] = (item.documents && item.documents.length > 0)
+                            ? item.documents
+                            : [
+                                {
+                                  id: `${item.id}-interior`,
+                                  name: `${item.product_type} - Interior Pages (PDF)`,
+                                  file_type: "CONTENT_INTERIOR",
+                                  file_url: (item.pdf_artwork_url && !item.pdf_artwork_url.includes("assets.peecho.com") ? item.pdf_artwork_url : "/artworks/peecho_hardcover_photobook_a4.pdf"),
+                                  page_count: item.page_count,
+                                  is_primary: true,
+                                },
+                                {
+                                  id: `${item.id}-cover`,
+                                  name: `${item.product_type} - Cover Wrap (PDF)`,
+                                  file_type: "COVER_WRAP",
+                                  file_url: (item.pdf_cover_url && !item.pdf_cover_url.includes("assets.peecho.com") ? item.pdf_cover_url : "/artworks/peecho_hardcover_wrap_cover.pdf"),
+                                  page_count: 1,
+                                  is_primary: false,
+                                },
+                              ];
+
+                          return (
+                            <div className="space-y-2 pt-1 border-t border-slate-100">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                                  <FileText className="w-3.5 h-3.5 text-[#0073EA]" />
+                                  <span>Artwork Documents ({itemDocs.length}):</span>
+                                </span>
+                                <Link
+                                  href={`/prepress?orderId=${selectedOrder.id}`}
+                                  className="text-[11px] font-semibold text-[#0073EA] hover:text-[#005fb8] inline-flex items-center gap-1 hover:underline"
+                                >
+                                  <span>Open in Prepress Studio</span>
+                                  <ExternalLink className="w-3 h-3" />
+                                </Link>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {itemDocs.map((doc) => (
+                                  <div
+                                    key={doc.id}
+                                    className="p-2.5 rounded-lg border border-slate-200 bg-slate-50/70 hover:bg-slate-50 transition-colors flex items-center justify-between gap-2"
+                                  >
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-xs font-semibold text-slate-800 truncate" title={doc.name}>
+                                        {doc.name}
+                                      </p>
+                                      <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-500">
+                                        <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                                          {doc.file_type === "COVER_WRAP" ? "Cover Wrap" : "Interior Content"}
+                                        </span>
+                                        {doc.page_count && (
+                                          <span>{doc.page_count} {doc.page_count === 1 ? "page" : "pages"}</span>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 px-2 text-[11px] font-semibold text-[#0073EA] bg-white border-blue-200 hover:bg-blue-50"
+                                        onClick={() => {
+                                          setDocumentPreviewModal({
+                                            isOpen: true,
+                                            orderNumber: selectedOrder.order_number,
+                                            productType: item.product_type,
+                                            documents: itemDocs,
+                                            activeDocId: doc.id,
+                                          });
+                                        }}
+                                      >
+                                        <Eye className="w-3 h-3 mr-1" />
+                                        <span>Preview</span>
+                                      </Button>
+
+                                      <a
+                                        href={doc.file_url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        download={`${selectedOrder.order_number}_${doc.id}.pdf`}
+                                        className="h-7 px-2 inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 rounded-md transition-colors"
+                                        title="Download PDF"
+                                      >
+                                        <Download className="w-3 h-3" />
+                                      </a>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     ))}
                   </div>
@@ -1084,13 +1772,39 @@ export default function OrdersPage() {
                   </div>
                 </div>
 
-                {/* Status Update Quick Buttons */}
+                {/* Sequential Order Pipeline & Status Management */}
                 {(() => {
                   const currentOrderStatusCode =
-                    selectedOrder.status_details?.code ||
-                    (typeof selectedOrder.status === "string" ? selectedOrder.status : "");
+                    selectedOrder.status_details?.code?.toUpperCase() ||
+                    (typeof selectedOrder.status === "string" ? selectedOrder.status.toUpperCase() : "RECEIVED");
                   const currentOrderStatusName =
                     selectedOrder.status_details?.name || currentOrderStatusCode || "Unknown";
+
+                  const currentStepNumber = PIPELINE_STEP_MAP[currentOrderStatusCode] ?? 1;
+                  const nextSequentialStep = PIPELINE_SEQUENCE.find((item) => item.step === currentStepNumber + 1);
+
+                  const targetStatusCodeUpper = (transitionStatusCode || "").toUpperCase();
+                  const targetStepNumber = PIPELINE_STEP_MAP[targetStatusCodeUpper];
+
+                  const isBackward = currentStepNumber !== undefined && targetStepNumber !== undefined && targetStepNumber < currentStepNumber;
+                  let isSkipped = currentStepNumber !== undefined && targetStepNumber !== undefined && targetStepNumber > currentStepNumber + 1;
+                  if (["RECEIVED", "PREPRESS_QUEUED"].includes(currentOrderStatusCode) && targetStatusCodeUpper === "PREPRESS_PASSED") {
+                    isSkipped = false;
+                  }
+                  if (["IN_PRODUCTION", "PRINTING", "QUALITY_AUDIT"].includes(currentOrderStatusCode) && ["QUALITY_AUDIT", "PRODUCTION_COMPLETED", "PACKED"].includes(targetStatusCodeUpper)) {
+                    isSkipped = false;
+                  }
+                  const requiresAdminApproval = isBackward || isSkipped;
+
+                  const isPrepressRole = effectiveRole === "PREPRESS_SPECIALIST";
+                  const isPendingPrepress = ["RECEIVED", "PREPRESS_QUEUED", "PENDING_PREPRESS"].includes(currentOrderStatusCode);
+                  const isApprovedPrepress = [
+                    "PREPRESS_PASSED", "BATCHED", "IN_PRODUCTION", "PRINTING", "QUALITY_AUDIT",
+                    "PRODUCTION_COMPLETED", "PACKED", "READY_FOR_DISPATCH", "DISPATCHED",
+                    "IN_TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED"
+                  ].includes(currentOrderStatusCode);
+                  const canAdvanceToNext = isAdmin || (nextSequentialStep ? isStatusAllowedForRole(effectiveRole, nextSequentialStep.code) : false);
+                  const canPutOnHold = isAdmin || isStatusAllowedForRole(effectiveRole, "EXCEPTION_HOLD");
 
                   return (
                     <>
@@ -1115,7 +1829,7 @@ export default function OrdersPage() {
                           <div className="flex-1">
                             <div className="flex items-center justify-between">
                               <span className="font-bold text-xs">
-                                {syncAlert.type === "success" ? "Peecho Gateway Auto-Sync Confirmed" : "Auto-Sync Error"}
+                                {syncAlert.type === "success" ? "Pipeline Status Synchronized" : "Status Transition Blocked"}
                               </span>
                               <span className="text-[10px] opacity-75 font-mono">{syncAlert.timestamp}</span>
                             </div>
@@ -1130,251 +1844,510 @@ export default function OrdersPage() {
                         </div>
                       )}
 
-                      <div className="p-3.5 bg-blue-50/50 rounded-xl border border-blue-100 space-y-2.5">
+                      {/* Sequential Pipeline Stepper Box */}
+                      <div className="p-4 bg-gradient-to-br from-blue-50/80 via-slate-50 to-indigo-50/50 rounded-xl border border-blue-200 space-y-3.5">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span className="font-bold text-slate-900 block">
-                            Quick Status Actions:
-                          </span>
-                          <div className="flex items-center gap-1.5 text-xs">
-                            <span className="text-slate-500 font-medium">Current:</span>
-                            {selectedOrder.status_details ? (
-                              <Badge
-                                variant="custom"
-                                bgHex={selectedOrder.status_details.badge_bg}
-                                textHex={selectedOrder.status_details.badge_text}
-                                dot={true}
-                                size="sm"
-                              >
-                                {selectedOrder.status_details.name}
-                              </Badge>
-                            ) : (
-                              <Badge variant="neutral" size="sm">
-                                {currentOrderStatusCode || "None"}
-                              </Badge>
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg bg-[#0073EA] text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                              {currentStepNumber}
+                            </div>
+                            <div>
+                              <p className="text-[10px] uppercase tracking-wider font-bold text-blue-700">
+                                Sequential Pipeline Stage
+                              </p>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold text-slate-900 text-sm">
+                                  {currentOrderStatusName}
+                                </span>
+                                <Badge variant="neutral" size="sm" className="font-mono text-[10px]">
+                                  Step {currentStepNumber} of 13
+                                </Badge>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {isAdmin && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 text-[10px] font-bold border border-purple-200">
+                                <ShieldCheck className="w-3 h-3 text-purple-600" />
+                                <span>Admin Privileges Active</span>
+                              </span>
                             )}
                           </div>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className={`text-xs font-semibold ${
-                              currentOrderStatusCode === "PREPRESS_PASSED"
-                                ? "bg-emerald-50 border-emerald-300 text-emerald-800 ring-1 ring-emerald-300 shadow-xs"
-                                : "bg-white"
-                            }`}
-                            isLoading={updateStatusMutation.isPending}
-                            onClick={() =>
-                              updateStatusMutation.mutate({
-                                orderId: selectedOrder.id,
-                                statusCode: "PREPRESS_PASSED",
-                                comments: "Artwork verified and approved",
-                              })
-                            }
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 mr-1" />
-                            Artwork Approved {currentOrderStatusCode === "PREPRESS_PASSED" && "✓ (Current)"}
-                          </Button>
-
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className={`text-xs font-semibold ${
-                              currentOrderStatusCode === "IN_PRODUCTION"
-                                ? "bg-purple-50 border-purple-300 text-purple-800 ring-1 ring-purple-300 shadow-xs"
-                                : "bg-white"
-                            }`}
-                            isLoading={updateStatusMutation.isPending}
-                            onClick={() =>
-                              updateStatusMutation.mutate({
-                                orderId: selectedOrder.id,
-                                statusCode: "IN_PRODUCTION",
-                                comments: "Sent to printing press",
-                              })
-                            }
-                          >
-                            <BookOpen className="w-3.5 h-3.5 text-purple-600 mr-1" />
-                            Start Printing {currentOrderStatusCode === "IN_PRODUCTION" && "✓ (Current)"}
-                          </Button>
-
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className={`text-xs font-semibold ${
-                              currentOrderStatusCode === "PACKED" || currentOrderStatusCode === "PRODUCTION_COMPLETED"
-                                ? "bg-teal-50 border-teal-300 text-teal-800 ring-1 ring-teal-300 shadow-xs"
-                                : "bg-white"
-                            }`}
-                            isLoading={updateStatusMutation.isPending}
-                            onClick={() =>
-                              updateStatusMutation.mutate({
-                                orderId: selectedOrder.id,
-                                statusCode: "PACKED",
-                                comments: "Printing finished & packed",
-                              })
-                            }
-                          >
-                            <Check className="w-3.5 h-3.5 text-teal-600 mr-1" />
-                            Production Done {(currentOrderStatusCode === "PACKED" || currentOrderStatusCode === "PRODUCTION_COMPLETED") && "✓ (Current)"}
-                          </Button>
-
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className={`text-xs font-semibold ${
-                              currentOrderStatusCode === "OUT_FOR_DELIVERY"
-                                ? "bg-amber-50 border-amber-300 text-amber-800 ring-1 ring-amber-300 shadow-xs"
-                                : "bg-white"
-                            }`}
-                            isLoading={updateStatusMutation.isPending}
-                            onClick={() =>
-                              updateStatusMutation.mutate({
-                                orderId: selectedOrder.id,
-                                statusCode: "OUT_FOR_DELIVERY",
-                                comments: "Out with delivery driver",
-                              })
-                            }
-                          >
-                            <Truck className="w-3.5 h-3.5 text-amber-600 mr-1" />
-                            Out for Delivery {currentOrderStatusCode === "OUT_FOR_DELIVERY" && "✓ (Current)"}
-                          </Button>
-
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className={`text-xs font-semibold ${
-                              currentOrderStatusCode === "DELIVERED"
-                                ? "bg-emerald-50 border-emerald-300 text-emerald-800 ring-1 ring-emerald-300 shadow-xs"
-                                : "bg-white"
-                            }`}
-                            isLoading={updateStatusMutation.isPending}
-                            onClick={() =>
-                              updateStatusMutation.mutate({
-                                orderId: selectedOrder.id,
-                                statusCode: "DELIVERED",
-                                comments: "Handed over and delivered to customer",
-                              })
-                            }
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 mr-1" />
-                            Mark Delivered {currentOrderStatusCode === "DELIVERED" && "✓ (Current)"}
-                          </Button>
-
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className={`text-xs font-semibold text-rose-700 ${
-                              currentOrderStatusCode === "EXCEPTION_HOLD"
-                                ? "bg-rose-50 border-rose-300 text-rose-800 ring-1 ring-rose-300 shadow-xs"
-                                : "bg-white"
-                            }`}
-                            isLoading={updateStatusMutation.isPending}
-                            onClick={() =>
-                              updateStatusMutation.mutate({
-                                orderId: selectedOrder.id,
-                                statusCode: "EXCEPTION_HOLD",
-                                comments: "Order put on hold",
-                              })
-                            }
-                          >
-                            <AlertTriangle className="w-3.5 h-3.5 text-rose-600 mr-1" />
-                            Put on Hold {currentOrderStatusCode === "EXCEPTION_HOLD" && "✓ (Current)"}
-                          </Button>
-                        </div>
-                      </div>
-
-                      {/* Manual Dropdown Selector */}
-                      <div className="pt-2 border-t border-slate-200 space-y-2">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <label className="block font-semibold text-slate-700">
-                            Change Status Manually:
-                          </label>
-                          <div className="flex items-center gap-1.5 text-xs">
-                            <span className="text-slate-500 font-medium">Current Status:</span>
-                            {selectedOrder.status_details ? (
-                              <Badge
-                                variant="custom"
-                                bgHex={selectedOrder.status_details.badge_bg}
-                                textHex={selectedOrder.status_details.badge_text}
-                                dot={true}
-                                size="sm"
-                              >
-                                {selectedOrder.status_details.name} ({selectedOrder.status_details.code})
-                              </Badge>
-                            ) : (
-                              <Badge variant="neutral" size="sm">
-                                {currentOrderStatusCode || "None"}
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <select
-                            value={transitionStatusCode || currentOrderStatusCode}
-                            onChange={(e) => setTransitionStatusCode(e.target.value)}
-                            className="flex-1 bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-medium text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#0073EA]"
-                          >
-                            <option value="">Select target status...</option>
-                            {statusesData?.results?.map((st) => {
-                              const isCurrent = st.code === currentOrderStatusCode;
+                        {/* Interactive Visual Stepper Bar */}
+                        <div className="space-y-1.5">
+                          <div className="grid grid-cols-13 gap-1 py-1">
+                            {PIPELINE_SEQUENCE.map((stage) => {
+                              const isPast = stage.step < currentStepNumber;
+                              const isCurrent = stage.step === currentStepNumber;
                               return (
-                                <option key={st.id} value={st.code}>
-                                  {st.name} ({st.code}){isCurrent ? " — (Current Status)" : ""}
-                                </option>
+                                <div
+                                  key={stage.code}
+                                  className="flex flex-col items-center group relative"
+                                  title={`Step ${stage.step}: ${stage.name}`}
+                                >
+                                  <div
+                                    className={`w-full h-2 rounded-full transition-all ${
+                                      isPast
+                                        ? "bg-emerald-500"
+                                        : isCurrent
+                                        ? "bg-[#0073EA] ring-2 ring-blue-300 ring-offset-1"
+                                        : "bg-slate-200"
+                                    }`}
+                                  />
+                                </div>
                               );
                             })}
-                          </select>
+                          </div>
 
-                          <Button
-                            size="sm"
-                            disabled={
-                              !transitionStatusCode ||
-                              transitionStatusCode === currentOrderStatusCode ||
-                              updateStatusMutation.isPending
-                            }
-                            isLoading={updateStatusMutation.isPending}
-                            onClick={() => {
-                              if (
-                                selectedOrder &&
-                                transitionStatusCode &&
-                                transitionStatusCode !== currentOrderStatusCode
-                              ) {
-                                updateStatusMutation.mutate({
-                                  orderId: selectedOrder.id,
-                                  statusCode: transitionStatusCode,
-                                  comments: transitionComment || "Manual status change",
-                                });
-                              }
-                            }}
-                          >
-                            {transitionStatusCode && transitionStatusCode !== currentOrderStatusCode
-                              ? "Update Status"
-                              : "Current Status Selected"}
-                          </Button>
+                          <div className="flex items-center justify-between text-[10px] text-slate-500 font-medium px-0.5">
+                            <span className="text-emerald-700 font-semibold">1. Received</span>
+                            <span className={currentStepNumber >= 5 ? "text-purple-700 font-semibold" : ""}>5. Production</span>
+                            <span className={currentStepNumber >= 8 ? "text-teal-700 font-semibold" : ""}>8. Packed</span>
+                            <span className={currentStepNumber >= 13 ? "text-emerald-700 font-bold" : ""}>13. Delivered</span>
+                          </div>
                         </div>
 
-                        {transitionStatusCode && transitionStatusCode !== currentOrderStatusCode && (
-                          <div className="flex items-center justify-between p-2 rounded-lg bg-blue-50 border border-blue-200 text-xs text-blue-900">
-                            <span>
-                              Ready to change status: from <strong>{currentOrderStatusName}</strong> to{" "}
-                              <strong>
-                                {statusesData?.results?.find((s) => s.code === transitionStatusCode)?.name ||
-                                  transitionStatusCode}
-                              </strong>
+                        {/* Sequential Step Advancement / Station-Specific Provision */}
+                        <div className="pt-1">
+                          {isPrepressRole && !isAdmin ? (
+                            <div className="space-y-3">
+                              {isPendingPrepress ? (
+                                <div className="p-3.5 bg-white rounded-xl border border-blue-200 shadow-2xs space-y-3">
+                                  <div className="flex items-center gap-2.5">
+                                    <div className="w-8 h-8 rounded-lg bg-blue-100 text-[#0073EA] flex items-center justify-center font-bold text-xs shrink-0">
+                                      <Layers className="w-4 h-4 text-[#0073EA]" />
+                                    </div>
+                                    <div>
+                                      <h5 className="font-bold text-slate-900 text-xs">Artwork Proof Verification Decision</h5>
+                                      <p className="text-[11px] text-slate-500">
+                                        Inspect customer bleeds, spine width, and high-resolution PDF proof. Either approve to release to the print floor or reject with an exception hold.
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                                    <Button
+                                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2.5 shadow-xs flex items-center justify-center gap-2"
+                                      isLoading={updateStatusMutation.isPending}
+                                      leftIcon={<CheckCircle2 className="w-4 h-4" />}
+                                      onClick={() => {
+                                        updateStatusMutation.mutate({
+                                          orderId: selectedOrder.id,
+                                          statusCode: "PREPRESS_PASSED",
+                                          comments: transitionComment || "Artwork verified & proof approved by Prepress. Ready for print floor.",
+                                        });
+                                      }}
+                                    >
+                                      Approve Artwork Proof & Release to Print Floor
+                                    </Button>
+
+                                    <Button
+                                      variant="outline"
+                                      className="text-xs py-2.5 text-rose-700 border-rose-200 hover:bg-rose-50 font-bold"
+                                      isLoading={updateStatusMutation.isPending}
+                                      leftIcon={<AlertTriangle className="w-4 h-4 text-rose-600" />}
+                                      onClick={() => {
+                                        updateStatusMutation.mutate({
+                                          orderId: selectedOrder.id,
+                                          statusCode: "EXCEPTION_HOLD",
+                                          comments: transitionComment || "Artwork proof rejected or flagged on exception hold by Prepress.",
+                                        });
+                                      }}
+                                    >
+                                      Reject Proof / Exception Hold
+                                    </Button>
+                                  </div>
+
+                                  <input
+                                    type="text"
+                                    name="prepress_note_input"
+                                    autoComplete="off"
+                                    autoCorrect="off"
+                                    spellCheck={false}
+                                    data-lpignore="true"
+                                    placeholder="Optional note for print floor operators..."
+                                    value={transitionComment}
+                                    onChange={(e) => setTransitionComment(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#0073EA]"
+                                  />
+                                </div>
+                              ) : isApprovedPrepress ? (
+                                <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-3">
+                                  <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                                  </div>
+                                  <div>
+                                    <span className="font-bold text-xs text-emerald-950 block">
+                                      Artwork Approved & Forwarded to Production Floor
+                                    </span>
+                                    <p className="text-[11px] text-emerald-800 mt-0.5">
+                                      This order has passed Prepress verification. It is active in digital press & bindery production. Per factory workflow policy, Prepress modifications are locked.
+                                    </p>
+                                  </div>
+                                </div>
+                              ) : currentOrderStatusCode === "EXCEPTION_HOLD" ? (
+                                <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between gap-3">
+                                  <div className="flex items-center gap-2.5">
+                                    <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+                                    <div>
+                                      <span className="font-bold text-xs text-rose-950 block">Artwork On Exception Hold</span>
+                                      <p className="text-[11px] text-rose-800">Flagged for artwork correction. Once resolved, you can re-approve for production.</p>
+                                    </div>
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs"
+                                    isLoading={updateStatusMutation.isPending}
+                                    onClick={() => {
+                                      updateStatusMutation.mutate({
+                                        orderId: selectedOrder.id,
+                                        statusCode: "PREPRESS_PASSED",
+                                        comments: "Artwork issue resolved. Approved for print floor.",
+                                      });
+                                    }}
+                                  >
+                                    Re-approve Artwork
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600">
+                                  Current Status: <strong>{currentOrderStatusName}</strong> (Prepress View Only)
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              {/* Quick Prepress Approve shortcut for Admins inspecting unapproved proofs */}
+                              {isAdmin && isPendingPrepress && (
+                                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <Layers className="w-4 h-4 text-amber-700 shrink-0" />
+                                    <span className="text-xs font-semibold text-amber-900">
+                                      Prepress Proof Decision Pending
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <Button
+                                      size="sm"
+                                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-7 px-2.5 shadow-2xs font-bold"
+                                      isLoading={updateStatusMutation.isPending}
+                                      onClick={() => {
+                                        updateStatusMutation.mutate({
+                                          orderId: selectedOrder.id,
+                                          statusCode: "PREPRESS_PASSED",
+                                          comments: "Admin approved artwork proof on behalf of Prepress.",
+                                        });
+                                      }}
+                                    >
+                                      Approve Proof (Prepress)
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="text-xs h-7 px-2 text-rose-700 border-rose-200 hover:bg-rose-50 font-bold"
+                                      isLoading={updateStatusMutation.isPending}
+                                      onClick={() => {
+                                        updateStatusMutation.mutate({
+                                          orderId: selectedOrder.id,
+                                          statusCode: "EXCEPTION_HOLD",
+                                          comments: "Admin flagged artwork exception hold.",
+                                        });
+                                      }}
+                                    >
+                                      Reject Proof
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="flex flex-wrap items-center gap-2">
+                                {nextSequentialStep ? (
+                                  canAdvanceToNext ? (
+                                    <Button
+                                      className="flex-1 bg-[#0073EA] hover:bg-[#0060c4] text-white font-bold text-xs py-2 shadow-xs flex items-center justify-center gap-2"
+                                      isLoading={updateStatusMutation.isPending}
+                                      onClick={() => {
+                                        updateStatusMutation.mutate({
+                                          orderId: selectedOrder.id,
+                                          statusCode: nextSequentialStep.code,
+                                          comments: transitionComment || `Sequential advancement: Step ${currentStepNumber} (${currentOrderStatusCode}) -> Step ${nextSequentialStep.step} (${nextSequentialStep.code})`,
+                                        });
+                                      }}
+                                    >
+                                      <span>
+                                        Advance to Step {nextSequentialStep.step}: {nextSequentialStep.name}
+                                      </span>
+                                      <ArrowRight className="w-4 h-4 ml-0.5" />
+                                    </Button>
+                                  ) : (
+                                    <div className="flex-1 p-2.5 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between gap-2 text-xs text-amber-900">
+                                      <div className="flex items-center gap-2">
+                                        <Lock className="w-4 h-4 text-amber-600 shrink-0" />
+                                        <div>
+                                          <span className="font-semibold block">
+                                            Step {nextSequentialStep.step} ({nextSequentialStep.name}) Locked for {rolePerm.roleName || effectiveRole}
+                                          </span>
+                                          <span className="text-[11px] text-amber-700">
+                                            {rolePerm.disallowedNotice || "This stage is assigned to another operational department."}
+                                          </span>
+                                        </div>
+                                      </div>
+                                      <Badge variant="warning" size="sm" dot={true}>
+                                        Restricted
+                                      </Badge>
+                                    </div>
+                                  )
+                                ) : (
+                                  <div className="flex-1 p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-center gap-2 text-xs font-semibold text-emerald-800">
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                    <span>Order has successfully completed all pipeline steps (Delivered).</span>
+                                  </div>
+                                )}
+
+                                {currentOrderStatusCode !== "EXCEPTION_HOLD" ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-xs text-rose-700 border-rose-200 hover:bg-rose-50"
+                                    disabled={!canPutOnHold || updateStatusMutation.isPending}
+                                    isLoading={updateStatusMutation.isPending}
+                                    onClick={() => {
+                                      if (!canPutOnHold) {
+                                        addNotification({
+                                          title: "Action Restricted",
+                                          message: rolePerm.disallowedNotice || "Your designation cannot place orders on hold.",
+                                          type: "warning",
+                                          category: "SECURITY",
+                                        });
+                                        return;
+                                      }
+                                      updateStatusMutation.mutate({
+                                        orderId: selectedOrder.id,
+                                        statusCode: "EXCEPTION_HOLD",
+                                        comments: transitionComment || "Order placed on exception hold",
+                                      });
+                                    }}
+                                  >
+                                    <AlertTriangle className="w-3.5 h-3.5 mr-1 text-rose-600" />
+                                    <span>Put on Hold</span>
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-xs text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+                                    disabled={!isStatusAllowedForRole(effectiveRole, "PREPRESS_QUEUED") || updateStatusMutation.isPending}
+                                    isLoading={updateStatusMutation.isPending}
+                                    onClick={() => {
+                                      updateStatusMutation.mutate({
+                                        orderId: selectedOrder.id,
+                                        statusCode: "PREPRESS_QUEUED",
+                                        comments: transitionComment || "Resuming order from hold into prepress queue",
+                                      });
+                                    }}
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                                    <span>Resume Order</span>
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Manual Transition & Designation Authorization Section (Hidden for Prepress non-admin) */}
+                      {(!isPrepressRole || isAdmin) && (
+                        <div className="pt-3 border-t border-slate-200 space-y-2.5">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <label className="block font-semibold text-slate-800 text-xs">
+                              Manual Pipeline Adjustment:
+                            </label>
+                            <span className="text-[11px] text-slate-500">
+                              {isAdmin
+                                ? "Admins can authorize backward rollbacks or stage skips"
+                                : `Designation Scope: Only ${rolePerm.department} stages authorized`}
                             </span>
                           </div>
-                        )}
 
-                        <input
-                          type="text"
-                          placeholder="Add a note or reason for status change..."
-                          value={transitionComment}
-                          onChange={(e) => setTransitionComment(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#0073EA]"
-                        />
-                      </div>
+                          <div className="flex items-center gap-2">
+                            <select
+                              value={transitionStatusCode || currentOrderStatusCode}
+                              onChange={(e) => {
+                                setTransitionStatusCode(e.target.value);
+                                setAdminOverrideApproved(false);
+                              }}
+                              className="flex-1 bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-medium text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#0073EA]"
+                            >
+                              <option value="">Select target status...</option>
+                              {/* Authorized Statuses for User's Designation */}
+                              <optgroup label={`Authorized for ${rolePerm.roleName || "Your Designation"}`}>
+                                {statusesData?.results
+                                  ?.filter((st) => isAdmin || isStatusAllowedForRole(effectiveRole, st.code))
+                                  ?.map((st) => {
+                                    const isCurrent = st.code.toUpperCase() === currentOrderStatusCode;
+                                    const targetStep = PIPELINE_STEP_MAP[st.code.toUpperCase()];
+                                    const optBackward = currentStepNumber !== undefined && targetStep !== undefined && targetStep < currentStepNumber;
+                                    const optSkipped = currentStepNumber !== undefined && targetStep !== undefined && targetStep > currentStepNumber + 1;
+                                    const optRequiresAdmin = optBackward || optSkipped;
+
+                                    return (
+                                      <option
+                                        key={st.id}
+                                        value={st.code}
+                                        disabled={!isAdmin && optRequiresAdmin}
+                                      >
+                                        {st.name} ({st.code})
+                                        {isCurrent
+                                          ? " — (Current Status)"
+                                          : optBackward
+                                          ? ` — ⚠️ Rollback${!isAdmin ? " [Locked: Admin Only]" : " [Admin Override]"}`
+                                          : optSkipped
+                                          ? ` — ⚠️ Skip${!isAdmin ? " [Locked: Admin Only]" : " [Admin Override]"}`
+                                          : targetStep
+                                          ? ` — (Step ${targetStep})`
+                                          : ""}
+                                      </option>
+                                    );
+                                  })}
+                              </optgroup>
+
+                              {/* Locked Statuses for Other Departments */}
+                              {!isAdmin && (
+                                <optgroup label="Locked for Other Departments (Restricted)">
+                                  {statusesData?.results
+                                    ?.filter((st) => !isStatusAllowedForRole(effectiveRole, st.code))
+                                    ?.map((st) => (
+                                      <option key={st.id} value={st.code} disabled={true}>
+                                        🔒 {st.name} ({st.code}) — [Restricted Department]
+                                      </option>
+                                    ))}
+                                </optgroup>
+                              )}
+                            </select>
+
+                            {(() => {
+                              const isSelectedStatusPermitted = isAdmin || (transitionStatusCode ? isStatusAllowedForRole(effectiveRole, transitionStatusCode) : false);
+
+                              return (
+                                <Button
+                                  size="sm"
+                                  disabled={
+                                    !transitionStatusCode ||
+                                    transitionStatusCode.toUpperCase() === currentOrderStatusCode ||
+                                    !isSelectedStatusPermitted ||
+                                    (requiresAdminApproval && (!isAdmin || !adminOverrideApproved)) ||
+                                    updateStatusMutation.isPending
+                                  }
+                                  isLoading={updateStatusMutation.isPending}
+                                  className={
+                                    requiresAdminApproval
+                                      ? "bg-amber-600 hover:bg-amber-700 text-white"
+                                      : ""
+                                  }
+                                  onClick={() => {
+                                    if (
+                                      selectedOrder &&
+                                      transitionStatusCode &&
+                                      transitionStatusCode.toUpperCase() !== currentOrderStatusCode
+                                    ) {
+                                      if (!isSelectedStatusPermitted) {
+                                        addNotification({
+                                          title: "Designation Status Change Blocked",
+                                          message: rolePerm.disallowedNotice || "Your staff designation is not permitted to transition to this stage.",
+                                          type: "error",
+                                          category: "SECURITY",
+                                        });
+                                        return;
+                                      }
+
+                                      if (requiresAdminApproval && (!isAdmin || !adminOverrideApproved)) {
+                                        addNotification({
+                                          title: "Administrator Approval Required",
+                                          message: !isAdmin
+                                            ? "Only Administrators can approve order status rollbacks or non-sequential jumps."
+                                            : "Please check the 'I authorize this status rollback' confirmation box before applying.",
+                                          type: "warning",
+                                          category: "SECURITY",
+                                        });
+                                        return;
+                                      }
+
+                                      updateStatusMutation.mutate({
+                                        orderId: selectedOrder.id,
+                                        statusCode: transitionStatusCode,
+                                        comments: transitionComment || (requiresAdminApproval ? "Admin approved status override" : "Manual status change"),
+                                        adminApproved: requiresAdminApproval && isAdmin && adminOverrideApproved,
+                                      });
+                                    }
+                                  }}
+                                >
+                                  {requiresAdminApproval
+                                    ? "Apply Admin Override"
+                                    : !isSelectedStatusPermitted
+                                    ? "Status Locked"
+                                    : transitionStatusCode && transitionStatusCode.toUpperCase() !== currentOrderStatusCode
+                                    ? "Update Status"
+                                    : "Current Status Selected"}
+                                </Button>
+                              );
+                            })()}
+                          </div>
+
+                          {/* Admin Approval Notice for Rollback / Skipping */}
+                          {requiresAdminApproval && transitionStatusCode && transitionStatusCode.toUpperCase() !== currentOrderStatusCode && (
+                            <div className="p-3 rounded-xl border border-amber-300 bg-amber-50/90 text-amber-900 space-y-2 text-xs animate-in fade-in">
+                              <div className="flex items-center gap-1.5 font-bold">
+                                <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
+                                <span>
+                                  {isBackward ? "Pipeline Rollback Warning" : "Non-Sequential Stage Skip Warning"}
+                                </span>
+                              </div>
+                              <p className="leading-relaxed">
+                                You selected to move from <strong>{currentOrderStatusName}</strong> (Step {currentStepNumber}) to{" "}
+                                <strong>
+                                  {statusesData?.results?.find((s) => s.code.toUpperCase() === targetStatusCodeUpper)?.name ||
+                                    transitionStatusCode}
+                                </strong>{" "}
+                                (Step {targetStepNumber || "N/A"}). This {isBackward ? "reverts to an earlier stage" : "skips operational stages"} and requires explicit Admin authorization.
+                              </p>
+
+                              {isAdmin ? (
+                                <label className="flex items-center gap-2 pt-1 font-semibold text-amber-950 cursor-pointer select-none">
+                                  <input
+                                    type="checkbox"
+                                    checked={adminOverrideApproved}
+                                    onChange={(e) => setAdminOverrideApproved(e.target.checked)}
+                                    className="w-4 h-4 rounded border-amber-400 text-[#0073EA] focus:ring-[#0073EA]"
+                                  />
+                                  <span>I am an Administrator and approve this status override</span>
+                                </label>
+                              ) : (
+                                <div className="flex items-center gap-1.5 text-rose-700 font-semibold pt-1">
+                                  <Lock className="w-3.5 h-3.5" />
+                                  <span>Order status cannot be moved backward or skipped without Admin approval.</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          <input
+                            type="text"
+                            name="transition_reason_note"
+                            autoComplete="off"
+                            autoCorrect="off"
+                            spellCheck={false}
+                            data-lpignore="true"
+                            placeholder="Add an audit note or reason for this status change..."
+                            value={transitionComment}
+                            onChange={(e) => setTransitionComment(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#0073EA]"
+                          />
+                        </div>
+                      )}
                     </>
                   );
                 })()}
@@ -1434,6 +2407,125 @@ export default function OrdersPage() {
           </div>
         )}
       </Modal>
+
+      {/* Interactive Multi-Document PDF Preview Modal */}
+      {documentPreviewModal && (
+        <Modal
+          isOpen={documentPreviewModal.isOpen}
+          onClose={() => setDocumentPreviewModal(null)}
+          title={`Artwork Prepress Document Preview — Order ${documentPreviewModal.orderNumber}`}
+          maxWidth="5xl"
+        >
+          <div className="space-y-4">
+            {/* Document Selector Tabs if multiple documents exist */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-slate-500">Available Documents:</span>
+                <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg">
+                  {documentPreviewModal.documents.map((doc) => {
+                    const isActive = doc.id === documentPreviewModal.activeDocId;
+                    return (
+                      <button
+                        key={doc.id}
+                        onClick={() =>
+                          setDocumentPreviewModal({
+                            ...documentPreviewModal,
+                            activeDocId: doc.id,
+                          })
+                        }
+                        className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                          isActive
+                            ? "bg-white text-[#0073EA] shadow-xs"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>{doc.name}</span>
+                        {doc.page_count && (
+                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-200/80 text-slate-700">
+                            {doc.page_count}p
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Action Buttons: Direct download & Open in Prepress */}
+              <div className="flex items-center gap-2">
+                {selectedOrder && (
+                  <Link
+                    href={`/prepress?orderId=${selectedOrder.id}`}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 transition-colors shadow-xs"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Open in Prepress Studio</span>
+                  </Link>
+                )}
+                {(() => {
+                  const activeDoc =
+                    documentPreviewModal.documents.find(
+                      (d) => d.id === documentPreviewModal.activeDocId
+                    ) || documentPreviewModal.documents[0];
+                  return (
+                    <a
+                      href={activeDoc?.file_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      download
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-[#0073EA] hover:bg-blue-100 transition-colors shadow-xs"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Download PDF</span>
+                    </a>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* Live PDF Viewer Iframe */}
+            {(() => {
+              const activeDoc =
+                documentPreviewModal.documents.find(
+                  (d) => d.id === documentPreviewModal.activeDocId
+                ) || documentPreviewModal.documents[0];
+
+              return (
+                <div className="space-y-3">
+                  <div className="w-full h-[620px] rounded-xl border border-slate-300 bg-slate-900 overflow-hidden shadow-inner relative">
+                    <iframe
+                      src={`${activeDoc?.file_url}#toolbar=1&navpanes=1`}
+                      className="w-full h-full border-0 rounded-xl"
+                      title={activeDoc?.name || "Document Preview"}
+                    />
+                  </div>
+
+                  {/* Production & Prepress Specs Bar */}
+                  <div className="grid grid-cols-4 gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                    <div>
+                      <span className="text-slate-400 block text-[11px]">Document Name:</span>
+                      <span className="font-semibold text-slate-800 truncate block">{activeDoc?.name}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[11px]">Preflight Color Space:</span>
+                      <span className="font-semibold text-slate-800">CMYK FOGRA39 (ISO 12647-2)</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[11px]">Print Resolution:</span>
+                      <span className="font-semibold text-emerald-700">300 DPI (High-Res Approved)</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[11px]">Bleed & Trim Box:</span>
+                      <span className="font-semibold text-slate-800">3.0 mm Standard Bleed</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

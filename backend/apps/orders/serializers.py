@@ -7,6 +7,10 @@ from apps.core.serializers.lookups import EntityStatusSerializer
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
+    pdf_artwork_url = serializers.SerializerMethodField()
+    pdf_cover_url = serializers.SerializerMethodField()
+    documents = serializers.SerializerMethodField()
+
     class Meta:
         model = OrderItem
         fields = [
@@ -19,17 +23,55 @@ class OrderItemSerializer(serializers.ModelSerializer):
             "paper_stock",
             "pdf_artwork_url",
             "pdf_cover_url",
+            "documents",
             "preflight_passed",
             "metadata",
             "created_at",
         ]
         read_only_fields = ["id", "created_at"]
 
+    def get_pdf_artwork_url(self, obj):
+        url = obj.pdf_artwork_url
+        if not url or "assets.peecho.com" in str(url) or "example.com" in str(url):
+            return "/artworks/peecho_hardcover_photobook_a4.pdf"
+        return url
+
+    def get_pdf_cover_url(self, obj):
+        url = obj.pdf_cover_url
+        if not url or "assets.peecho.com" in str(url) or "example.com" in str(url):
+            return "/artworks/peecho_hardcover_wrap_cover.pdf"
+        return url
+
+    def get_documents(self, obj):
+        art_url = self.get_pdf_artwork_url(obj)
+        cov_url = self.get_pdf_cover_url(obj)
+        docs = [
+            {
+                "id": f"{obj.id}-interior",
+                "name": f"{obj.product_type} - Interior Pages (PDF)",
+                "file_type": "CONTENT_INTERIOR",
+                "file_url": art_url,
+                "page_count": obj.page_count,
+                "is_primary": True,
+            }
+        ]
+        if cov_url and cov_url != art_url:
+            docs.append({
+                "id": f"{obj.id}-cover",
+                "name": f"{obj.product_type} - Cover Wrap (PDF)",
+                "file_type": "COVER_WRAP",
+                "file_url": cov_url,
+                "page_count": 1,
+                "is_primary": False,
+            })
+        return docs
+
 
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
     status_details = EntityStatusSerializer(source="status", read_only=True)
     time_remaining_minutes = serializers.SerializerMethodField()
+    batch_info = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -47,6 +89,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "sla_deadline",
             "sla_priority",
             "time_remaining_minutes",
+            "batch_info",
             "total_items_count",
             "total_amount",
             "currency",
@@ -67,10 +110,26 @@ class OrderSerializer(serializers.ModelSerializer):
         diff = obj.sla_deadline - timezone.now()
         return int(diff.total_seconds() / 60)
 
+    def get_batch_info(self, obj):
+        batch = obj.production_batches.order_by("-created_at").first()
+        if not batch:
+            return None
+        return {
+            "id": str(batch.id),
+            "batch_number": batch.batch_number,
+            "target_press": batch.target_press,
+            "press_label": batch.get_target_press_display(),
+            "paper_stock": batch.paper_stock,
+            "status_code": batch.status.code if batch.status else None,
+            "status_name": batch.status.name if batch.status else None,
+            "created_at": batch.created_at,
+        }
+
 
 class OrderStatusUpdateSerializer(serializers.Serializer):
     status_code = serializers.CharField(required=True)
     comments = serializers.CharField(required=False, allow_blank=True, default="")
+    admin_approved = serializers.BooleanField(required=False, default=False)
 
 
 class PeechoPayloadLogSerializer(serializers.ModelSerializer):

@@ -16,13 +16,23 @@ import {
 import { authApi } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { getRoleHomePath } from "@/components/layout/navigation-config";
+import { useToast } from "@/context/notification-context";
 
 export default function LoginPage() {
   const router = useRouter();
+  const toast = useToast();
+  const [inactivityNotice, setInactivityNotice] = useState(false);
 
-  // If already logged in, redirect directly to dashboard
+  // If already logged in, redirect directly to dashboard (unless logged out due to inactivity)
   useEffect(() => {
     try {
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("reason") === "inactivity") {
+          setInactivityNotice(true);
+          return;
+        }
+      }
       const token = localStorage.getItem("silverpoint_access_token");
       const user = localStorage.getItem("silverpoint_user");
       if (token && user) {
@@ -83,6 +93,10 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!email.trim() || !password.trim()) {
+      toast.warning("Missing Credentials", "Please enter both your work email and password.");
+      return;
+    }
     setIsLoading(true);
     setErrorMessage(null);
 
@@ -95,6 +109,11 @@ export default function LoginPage() {
         user?.role_code ||
         (user?.is_superuser ? "SUPER_ADMIN" : "STAFF");
 
+      toast.success(
+        "Login Successful",
+        `Welcome back, ${user?.full_name || user?.email || "Team Member"}!`
+      );
+
       if (redirectToWorkstation && roleCode !== "SUPER_ADMIN" && roleCode !== "ADMIN") {
         const dest = getRoleHomePath(roleCode);
         router.push(dest);
@@ -102,9 +121,9 @@ export default function LoginPage() {
         router.push("/overview");
       }
     } catch (err: any) {
-      setErrorMessage(
-        err.message || "Invalid work email or password. Please verify your credentials."
-      );
+      const msg = err.message || "Invalid work email or password. Please verify your credentials.";
+      setErrorMessage(msg);
+      toast.error("Login Failed", msg);
     } finally {
       setIsLoading(false);
     }
@@ -136,6 +155,17 @@ export default function LoginPage() {
             </div>
           </div>
 
+          {/* Inactivity Notice */}
+          {inactivityNotice && (
+            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 flex items-start gap-2.5 animate-in fade-in duration-150">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+              <div>
+                <strong className="font-semibold block">Session Expired (30 min Inactivity)</strong>
+                <span>You were automatically logged out due to 30 minutes of inactivity. Please sign in again to resume your session.</span>
+              </div>
+            </div>
+          )}
+
           {/* Error Message */}
           {errorMessage && (
             <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-start gap-2.5 animate-in fade-in duration-150">
@@ -145,7 +175,7 @@ export default function LoginPage() {
           )}
 
           {/* Login Form */}
-          <form className="space-y-5" onSubmit={handleLogin}>
+          <form className="space-y-5" onSubmit={handleLogin} autoComplete="on">
             
             {/* Work Email Field */}
             <div>
@@ -156,6 +186,9 @@ export default function LoginPage() {
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="email"
+                  id="email"
+                  name="email"
+                  autoComplete="username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -174,6 +207,9 @@ export default function LoginPage() {
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type={showPassword ? "text" : "password"}
+                  id="password"
+                  name="password"
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required

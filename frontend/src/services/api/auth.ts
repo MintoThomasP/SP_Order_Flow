@@ -9,6 +9,7 @@ export const authApi = {
       localStorage.setItem("silverpoint_access_token", res.data.access);
       localStorage.setItem("silverpoint_refresh_token", res.data.refresh);
       localStorage.setItem("silverpoint_user", JSON.stringify(res.data.user));
+      localStorage.setItem("silverpoint_last_activity", Date.now().toString());
     }
     return res.data;
   },
@@ -18,6 +19,7 @@ export const authApi = {
     const res = await apiClient.post<{ access: string }>("/auth/token/refresh/", { refresh });
     if (typeof window !== "undefined") {
       localStorage.setItem("silverpoint_access_token", res.data.access);
+      localStorage.setItem("silverpoint_last_activity", Date.now().toString());
     }
     return res.data;
   },
@@ -36,6 +38,7 @@ export const authApi = {
       localStorage.removeItem("silverpoint_access_token");
       localStorage.removeItem("silverpoint_refresh_token");
       localStorage.removeItem("silverpoint_user");
+      localStorage.removeItem("silverpoint_last_activity");
     }
   },
 
@@ -46,9 +49,14 @@ export const authApi = {
   },
 
   // Staff Users CRUD
-  getUsers: async (search?: string): Promise<PaginatedResponse<StaffUser>> => {
+  getUsers: async (params?: {
+    search?: string;
+    page?: number;
+    page_size?: number;
+  } | string): Promise<PaginatedResponse<StaffUser>> => {
+    const queryParams = typeof params === "string" ? { search: params } : params;
     const res = await apiClient.get<PaginatedResponse<StaffUser>>("/auth/users/", {
-      params: { search },
+      params: queryParams,
     });
     return res.data;
   },
@@ -76,12 +84,21 @@ export const authApi = {
     return res.data;
   },
 
+  changePassword: async (userId: string, password: string): Promise<{ detail: string }> => {
+    const res = await apiClient.post<{ detail: string }>(`/auth/users/${userId}/change-password/`, {
+      password,
+    });
+    return res.data;
+  },
+
   // User Audit Logs
   getAuditLogs: async (params?: {
     action?: string;
     resource_type?: string;
     user_id?: string;
     search?: string;
+    page?: number;
+    page_size?: number;
   }): Promise<PaginatedResponse<UserAuditLog>> => {
     const res = await apiClient.get<PaginatedResponse<UserAuditLog>>("/auth/audit-logs/", {
       params,

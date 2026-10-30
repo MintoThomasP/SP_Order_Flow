@@ -12,8 +12,8 @@ import {
 
 export const financeApi = {
   // Get dynamic pricing matrices
-  getPricingMatrix: async (): Promise<PaginatedResponse<DynamicPricingMatrix>> => {
-    const res = await apiClient.get<PaginatedResponse<DynamicPricingMatrix>>("/finance/pricing-matrix/");
+  getPricingMatrix: async (params?: { page?: number; page_size?: number }): Promise<PaginatedResponse<DynamicPricingMatrix>> => {
+    const res = await apiClient.get<PaginatedResponse<DynamicPricingMatrix>>("/finance/pricing-matrix/", { params });
     return res.data;
   },
 
@@ -24,7 +24,12 @@ export const financeApi = {
   },
 
   // List all Peecho invoices
-  getInvoices: async (params?: { search?: string; status?: string }): Promise<PaginatedResponse<PeechoInvoice>> => {
+  getInvoices: async (params?: {
+    search?: string;
+    status?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<PaginatedResponse<PeechoInvoice>> => {
     const res = await apiClient.get<PaginatedResponse<PeechoInvoice>>("/finance/invoices/", { params });
     return res.data;
   },

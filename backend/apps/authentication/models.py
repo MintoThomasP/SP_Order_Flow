@@ -140,6 +140,7 @@ class UserAuditLog(models.Model):
         ("ROLE_ASSIGNMENT", "Updated Staff Role"),
         ("USER_CREATE", "Created Staff User"),
         ("USER_UPDATE", "Updated Staff User"),
+        ("PASSWORD_CHANGE", "Changed User Password"),
         ("USER_LOGIN", "Staff Authenticated"),
         ("USER_LOGOUT", "Staff Logged Out"),
         ("PEECHO_SYNC_TRIGGERED", "Triggered Manual Peecho Sync"),

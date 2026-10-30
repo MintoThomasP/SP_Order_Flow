@@ -43,11 +43,13 @@ import { Badge } from "@/components/ui/badge";
 import { Table, Column } from "@/components/ui/table";
 import { StatCard } from "@/components/ui/stat-card";
 import { Modal } from "@/components/ui/modal";
+import { useToast } from "@/context/notification-context";
 
 type PODChannel = "printify" | "peecho" | "custom";
 
 export default function PODIntegrationsPage() {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [selectedChannel, setSelectedChannel] = useState<PODChannel>("printify");
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
@@ -104,8 +106,8 @@ export default function PODIntegrationsPage() {
             page_count: 52,
             spine_width_mm: 11.5,
             paper_stock: "200gsm Silk Inner + Matte Cover",
-            pdf_artwork_url: "https://assets.peecho.com/demo/interior.pdf",
-            pdf_cover_url: "https://assets.peecho.com/demo/cover.pdf",
+            pdf_artwork_url: "/artworks/peecho_hardcover_photobook_a4.pdf",
+            pdf_cover_url: "/artworks/peecho_hardcover_wrap_cover.pdf",
           },
         ],
       },
@@ -123,13 +125,16 @@ export default function PODIntegrationsPage() {
     queryFn: () => ordersApi.getPeechoConfig(),
   });
 
+  const [peechoPage, setPeechoPage] = useState(1);
+  const [peechoPageSize, setPeechoPageSize] = useState(10);
+
   const {
     data: peechoLogsData,
     isLoading: peechoLogsLoading,
     refetch: refetchPeechoLogs,
   } = useQuery({
-    queryKey: ["peecho-logs"],
-    queryFn: () => ordersApi.getPeechoPayloadLogs(),
+    queryKey: ["peecho-logs", peechoPage, peechoPageSize],
+    queryFn: () => ordersApi.getPeechoPayloadLogs({ page: peechoPage, page_size: peechoPageSize }),
     refetchInterval: 6000,
   });
 
@@ -152,6 +157,14 @@ export default function PODIntegrationsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["peecho-config"] });
       setIsEditingPeechoConfig(false);
+      toast.success(
+        "Peecho Configuration Saved",
+        "API credentials and webhook parameters updated successfully."
+      );
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.detail || err?.message || "Failed to update configuration";
+      toast.error("Peecho Save Failed", msg);
     },
   });
 
@@ -160,6 +173,21 @@ export default function PODIntegrationsPage() {
     onSuccess: (data) => {
       setPeechoTestResult(data);
       queryClient.invalidateQueries({ queryKey: ["peecho-config"] });
+      if (data.success) {
+        toast.success(
+          "Peecho Connection Verified",
+          data.message || "Peecho API answered with status 200 OK."
+        );
+      } else {
+        toast.error(
+          "Peecho Connection Test Failed",
+          data.message || "Could not authenticate with Peecho API."
+        );
+      }
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.detail || err?.message || "Connection test failed";
+      toast.error("Peecho Test Failed", msg);
     },
   });
 
@@ -168,6 +196,14 @@ export default function PODIntegrationsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["peecho-logs"] });
       queryClient.invalidateQueries({ queryKey: ["orders"] });
+      toast.success(
+        "Peecho Order Ingested",
+        "Webhook payload processed and orders synchronized."
+      );
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.detail || err?.message || "Failed to ingest webhook";
+      toast.error("Ingestion Failed", msg);
     },
   });
 
@@ -245,13 +281,16 @@ export default function PODIntegrationsPage() {
     queryFn: () => ordersApi.getPrintifyConfig(),
   });
 
+  const [printifyPage, setPrintifyPage] = useState(1);
+  const [printifyPageSize, setPrintifyPageSize] = useState(10);
+
   const {
     data: printifyLogsData,
     isLoading: printifyLogsLoading,
     refetch: refetchPrintifyLogs,
   } = useQuery({
-    queryKey: ["printify-logs"],
-    queryFn: () => ordersApi.getPrintifyPayloadLogs(),
+    queryKey: ["printify-logs", printifyPage, printifyPageSize],
+    queryFn: () => ordersApi.getPrintifyPayloadLogs({ page: printifyPage, page_size: printifyPageSize }),
     refetchInterval: 5000,
   });
 
@@ -271,6 +310,14 @@ export default function PODIntegrationsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["printify-config"] });
       setIsEditingPrintifyConfig(false);
+      toast.success(
+        "Printify Settings Saved",
+        "API access credentials and shop ID updated successfully."
+      );
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.detail || err?.message || "Failed to update Printify settings";
+      toast.error("Printify Save Failed", msg);
     },
   });
 
@@ -279,6 +326,21 @@ export default function PODIntegrationsPage() {
     onSuccess: (data) => {
       setPrintifyTestResult(data);
       queryClient.invalidateQueries({ queryKey: ["printify-config"] });
+      if (data.status === "healthy" || data.success) {
+        toast.success(
+          "Printify Connected Successfully",
+          data.message || "Printify API handshake completed."
+        );
+      } else {
+        toast.error(
+          "Printify Connection Failed",
+          data.message || "Could not verify credentials with Printify."
+        );
+      }
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.detail || err?.message || "Printify connection test failed";
+      toast.error("Printify Test Failed", msg);
     },
   });
 
@@ -287,6 +349,14 @@ export default function PODIntegrationsPage() {
     onSuccess: (data) => {
       setPrintifyRegisterResult(data);
       queryClient.invalidateQueries({ queryKey: ["printify-config"] });
+      toast.success(
+        "Printify Webhooks Registered",
+        "All print order events are now actively subscribed."
+      );
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.detail || err?.message || "Failed to register webhooks";
+      toast.error("Webhook Registration Failed", msg);
     },
   });
 
@@ -302,6 +372,14 @@ export default function PODIntegrationsPage() {
       setPrintifySimulateResult(data);
       queryClient.invalidateQueries({ queryKey: ["printify-logs"] });
       queryClient.invalidateQueries({ queryKey: ["orders"] });
+      toast.success(
+        "Webhook Event Simulated",
+        `Event "${data?.event_type || "order_status"}" processed successfully.`
+      );
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.detail || err?.message || "Failed to simulate webhook";
+      toast.error("Simulation Failed", msg);
     },
   });
 
@@ -310,6 +388,14 @@ export default function PODIntegrationsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["printify-logs"] });
       queryClient.invalidateQueries({ queryKey: ["orders"] });
+      toast.success(
+        "Printify Payload Ingested",
+        "Custom webhook JSON ingested into production pipeline."
+      );
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.detail || err?.message || "Failed to ingest payload";
+      toast.error("Ingestion Failed", msg);
     },
   });
 
@@ -319,6 +405,7 @@ export default function PODIntegrationsPage() {
   const handleCopy = (text: string, fieldName: string) => {
     navigator.clipboard.writeText(text);
     setCopiedField(fieldName);
+    toast.info("Copied to Clipboard", `${fieldName} copied.`);
     setTimeout(() => setCopiedField(null), 2000);
   };
 
@@ -805,7 +892,11 @@ export default function PODIntegrationsPage() {
               </div>
             </div>
 
-            <form onSubmit={handleSavePrintifyConfig} className="space-y-4">
+            <form onSubmit={handleSavePrintifyConfig} autoComplete="off" className="space-y-4">
+              {/* Hidden decoy fields to absorb aggressive browser autofill heuristics */}
+              <input type="text" style={{ display: 'none' }} tabIndex={-1} autoComplete="off" aria-hidden="true" />
+              <input type="password" style={{ display: 'none' }} tabIndex={-1} autoComplete="new-password" aria-hidden="true" />
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
                 {/* Shop ID */}
                 <div className="space-y-1">
@@ -813,6 +904,11 @@ export default function PODIntegrationsPage() {
                   {isEditingPrintifyConfig ? (
                     <input
                       type="text"
+                      name="printify_config_shop_id"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      data-lpignore="true"
                       placeholder="e.g. 1234567"
                       value={printifyConfigForm.shop_id}
                       onChange={(e) => setPrintifyConfigForm({ ...printifyConfigForm, shop_id: e.target.value })}
@@ -840,6 +936,11 @@ export default function PODIntegrationsPage() {
                   {isEditingPrintifyConfig ? (
                     <input
                       type="password"
+                      name="printify_config_api_token"
+                      autoComplete="new-password"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      data-lpignore="true"
                       placeholder="Enter PRINTIFY_API_TOKEN"
                       value={printifyConfigForm.api_token}
                       onChange={(e) => setPrintifyConfigForm({ ...printifyConfigForm, api_token: e.target.value })}
@@ -859,6 +960,11 @@ export default function PODIntegrationsPage() {
                   {isEditingPrintifyConfig ? (
                     <input
                       type="password"
+                      name="printify_config_webhook_secret"
+                      autoComplete="new-password"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      data-lpignore="true"
                       placeholder="Enter PRINTIFY_WEBHOOK_SECRET"
                       value={printifyConfigForm.webhook_secret}
                       onChange={(e) => setPrintifyConfigForm({ ...printifyConfigForm, webhook_secret: e.target.value })}
@@ -1088,6 +1194,18 @@ export default function PODIntegrationsPage() {
               data={printifyLogsData?.results || []}
               isLoading={printifyLogsLoading}
               emptyMessage="No Printify webhook events received yet. Use the simulator above to dispatch a test event."
+              pagination={{
+                currentPage: printifyLogsData?.current_page || printifyPage,
+                totalPages: printifyLogsData?.total_pages || Math.ceil((printifyLogsData?.count || 0) / printifyPageSize) || 1,
+                pageSize: printifyLogsData?.page_size || printifyPageSize,
+                totalCount: printifyLogsData?.count || 0,
+                onPageChange: (p) => setPrintifyPage(p),
+                onPageSizeChange: (s) => {
+                  setPrintifyPageSize(s);
+                  setPrintifyPage(1);
+                },
+                pageSizeOptions: [10, 25, 50],
+              }}
             />
           </div>
         </div>
@@ -1236,7 +1354,11 @@ export default function PODIntegrationsPage() {
               </div>
             </div>
 
-            <form onSubmit={handleSavePeechoConfig} className="space-y-4">
+            <form onSubmit={handleSavePeechoConfig} autoComplete="off" className="space-y-4">
+              {/* Hidden decoy fields to absorb aggressive browser autofill heuristics */}
+              <input type="text" style={{ display: 'none' }} tabIndex={-1} autoComplete="off" aria-hidden="true" />
+              <input type="password" style={{ display: 'none' }} tabIndex={-1} autoComplete="new-password" aria-hidden="true" />
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                 {/* Peecho API Base URL */}
                 <div className="space-y-1">
@@ -1244,6 +1366,11 @@ export default function PODIntegrationsPage() {
                   {isEditingPeechoConfig ? (
                     <input
                       type="url"
+                      name="peecho_config_api_url"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      data-lpignore="true"
                       value={peechoConfigForm.api_base_url}
                       onChange={(e) => setPeechoConfigForm({ ...peechoConfigForm, api_base_url: e.target.value })}
                       required
@@ -1262,6 +1389,11 @@ export default function PODIntegrationsPage() {
                   {isEditingPeechoConfig ? (
                     <input
                       type="text"
+                      name="peecho_config_button_key"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      data-lpignore="true"
                       value={peechoConfigForm.button_key}
                       onChange={(e) => setPeechoConfigForm({ ...peechoConfigForm, button_key: e.target.value })}
                       required
@@ -1288,6 +1420,11 @@ export default function PODIntegrationsPage() {
                   {isEditingPeechoConfig ? (
                     <input
                       type="password"
+                      name="peecho_config_api_key"
+                      autoComplete="new-password"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      data-lpignore="true"
                       placeholder="Enter API Key"
                       value={peechoConfigForm.api_key}
                       onChange={(e) => setPeechoConfigForm({ ...peechoConfigForm, api_key: e.target.value })}
@@ -1314,6 +1451,11 @@ export default function PODIntegrationsPage() {
                   {isEditingPeechoConfig ? (
                     <input
                       type="password"
+                      name="peecho_config_secret_key"
+                      autoComplete="new-password"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      data-lpignore="true"
                       placeholder="Enter Secret Key"
                       value={peechoConfigForm.secret_key}
                       onChange={(e) => setPeechoConfigForm({ ...peechoConfigForm, secret_key: e.target.value })}
@@ -1408,6 +1550,18 @@ export default function PODIntegrationsPage() {
               data={peechoLogsData?.results || []}
               isLoading={peechoLogsLoading}
               emptyMessage="No Peecho webhook events received yet."
+              pagination={{
+                currentPage: peechoLogsData?.current_page || peechoPage,
+                totalPages: peechoLogsData?.total_pages || Math.ceil((peechoLogsData?.count || 0) / peechoPageSize) || 1,
+                pageSize: peechoLogsData?.page_size || peechoPageSize,
+                totalCount: peechoLogsData?.count || 0,
+                onPageChange: (p) => setPeechoPage(p),
+                onPageSizeChange: (s) => {
+                  setPeechoPageSize(s);
+                  setPeechoPage(1);
+                },
+                pageSizeOptions: [10, 25, 50],
+              }}
             />
           </div>
         </div>

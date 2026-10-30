@@ -1,5 +1,21 @@
 from django.contrib import admin
-from apps.production.models import ProductionBatch
+from apps.production.models import ProductionBatch, PrintMachine, BindingMethod
+
+
+@admin.register(PrintMachine)
+class PrintMachineAdmin(admin.ModelAdmin):
+    list_display = ("name", "code", "sheet_format", "max_speed_cph", "is_active", "created_at")
+    list_filter = ("is_active", "sheet_format")
+    search_fields = ("name", "code", "description", "sheet_format")
+    readonly_fields = ("id", "created_at", "updated_at")
+
+
+@admin.register(BindingMethod)
+class BindingMethodAdmin(admin.ModelAdmin):
+    list_display = ("name", "code", "min_pages", "max_pages", "default_caliper_mm", "is_active", "created_at")
+    list_filter = ("is_active",)
+    search_fields = ("name", "code", "description")
+    readonly_fields = ("id", "created_at", "updated_at")
 
 
 @admin.register(ProductionBatch)

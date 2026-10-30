@@ -14,10 +14,14 @@ export const ordersApi = {
   // Get list of orders with filters
   getOrders: async (params?: {
     status?: string;
+    station?: string;
     urgency?: "critical" | "urgent" | "normal" | "breached" | string;
     search?: string;
     source?: string;
     is_external_pod?: boolean;
+    page?: number;
+    page_size?: number;
+    ordering?: string;
   }): Promise<PaginatedResponse<Order>> => {
     const res = await apiClient.get<PaginatedResponse<Order>>("/orders/", {
       params,
@@ -41,13 +45,29 @@ export const ordersApi = {
   updateOrderStatus: async (
     orderId: string,
     statusCode: string,
-    comments?: string
+    comments?: string,
+    adminApproved?: boolean
   ): Promise<{ detail: string; order: Order; peecho_sync?: any }> => {
+    let staffRole = "";
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("silverpoint_user");
+        if (stored) {
+          const u = JSON.parse(stored);
+          staffRole = u?.role?.code || u?.role_code || u?.role || "";
+        }
+      } catch (e) {}
+    }
+
     const res = await apiClient.post<{ detail: string; order: Order; peecho_sync?: any }>(
       `/orders/${orderId}/status/`,
       {
         status_code: statusCode,
         comments: comments || "Status transitioned via Order Management Portal",
+        admin_approved: !!adminApproved,
+      },
+      {
+        headers: staffRole ? { "X-Staff-Role": staffRole } : undefined,
       }
     );
     return res.data;
@@ -89,8 +109,12 @@ export const ordersApi = {
   },
 
   // Get raw Peecho payload logs
-  getPeechoPayloadLogs: async (): Promise<PaginatedResponse<PeechoPayloadLog>> => {
-    const res = await apiClient.get<PaginatedResponse<PeechoPayloadLog>>("/peecho/logs/");
+  getPeechoPayloadLogs: async (params?: {
+    page?: number;
+    page_size?: number;
+    search?: string;
+  }): Promise<PaginatedResponse<PeechoPayloadLog>> => {
+    const res = await apiClient.get<PaginatedResponse<PeechoPayloadLog>>("/peecho/logs/", { params });
     return res.data;
   },
 
@@ -187,8 +211,12 @@ export const ordersApi = {
     return res.data;
   },
 
-  getPrintifyPayloadLogs: async (): Promise<PaginatedResponse<PrintifyPayloadLog>> => {
-    const res = await apiClient.get<PaginatedResponse<PrintifyPayloadLog>>("/printify/logs/");
+  getPrintifyPayloadLogs: async (params?: {
+    page?: number;
+    page_size?: number;
+    search?: string;
+  }): Promise<PaginatedResponse<PrintifyPayloadLog>> => {
+    const res = await apiClient.get<PaginatedResponse<PrintifyPayloadLog>>("/printify/logs/", { params });
     return res.data;
   },
 

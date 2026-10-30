@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Truck,
@@ -33,6 +33,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
+import { Pagination } from "@/components/ui/pagination";
 import {
   Shipment,
   Order,
@@ -106,10 +107,23 @@ export default function DispatchPage() {
   const [selectedShipmentForTimeline, setSelectedShipmentForTimeline] = useState<Shipment | null>(null);
   const [lastDispatchedShipment, setLastDispatchedShipment] = useState<Shipment | null>(null);
 
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchFilter, statusFilter]);
+
   // Queries
   const { data: shipmentsData, isLoading: isLoadingShipments, refetch: refetchShipments } = useQuery({
-    queryKey: ["dispatch", "shipments", searchFilter],
-    queryFn: () => dispatchApi.getShipments({ search: searchFilter || undefined }),
+    queryKey: ["dispatch", "shipments", searchFilter, currentPage, pageSize],
+    queryFn: () =>
+      dispatchApi.getShipments({
+        search: searchFilter || undefined,
+        page: currentPage,
+        page_size: pageSize,
+      }),
     refetchInterval: 5000,
   });
 
@@ -208,6 +222,19 @@ export default function DispatchPage() {
       if (selectedShipmentForTimeline?.id === data.shipment.id) {
         setSelectedShipmentForTimeline(data.shipment);
       }
+      addNotification({
+        title: "Tracking Milestone Updated",
+        message: `Live courier checkpoint synchronized for tracking ${data.shipment?.tracking_number || ""}.`,
+        type: "info",
+        category: "STATUS_SYNC",
+      });
+    },
+    onError: (err: any) => {
+      addNotification({
+        title: "Tracking Poll Failed",
+        message: err?.message || "Could not reach courier tracking endpoint.",
+        type: "error",
+      });
     },
   });
 
@@ -401,6 +428,12 @@ export default function DispatchPage() {
                 <div className="relative">
                   <input
                     type="text"
+                    name="dispatch_order_search"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                    data-lpignore="true"
                     value={orderSearch}
                     onChange={(e) => setOrderSearch(e.target.value)}
                     placeholder="Enter order number e.g. SP-2026-90412..."
@@ -472,7 +505,7 @@ export default function DispatchPage() {
               )}
 
               {/* Form Controls */}
-              <form onSubmit={handleConfirmDispatch} className="space-y-4 pt-2">
+              <form onSubmit={handleConfirmDispatch} autoComplete="off" className="space-y-4 pt-2">
                 {/* Carrier Selection */}
                 <div>
                   <label className="text-xs font-bold text-slate-700 block mb-1.5 flex items-center gap-1.5">
@@ -516,6 +549,12 @@ export default function DispatchPage() {
                     </label>
                     <input
                       type="text"
+                      name="dispatch_tracking_number"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="off"
+                      spellCheck={false}
+                      data-lpignore="true"
                       required
                       value={trackingNumber}
                       onChange={(e) => setTrackingNumber(e.target.value)}
@@ -540,6 +579,9 @@ export default function DispatchPage() {
                     <div className="relative">
                       <input
                         type="number"
+                        name="dispatch_parcel_weight"
+                        autoComplete="off"
+                        data-lpignore="true"
                         step="0.05"
                         value={weightKg}
                         onChange={(e) => setWeightKg(e.target.value)}
@@ -574,6 +616,11 @@ export default function DispatchPage() {
                     </label>
                     <input
                       type="text"
+                      name="dispatch_notes"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      data-lpignore="true"
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
                       placeholder="e.g. Verified packaging, bubble wrap added"
@@ -933,6 +980,20 @@ export default function DispatchPage() {
             </tbody>
           </table>
         </CardContent>
+        {shipments.length > 0 && (
+          <Pagination
+            currentPage={currentPage}
+            totalPages={shipmentsData?.total_pages || Math.ceil((shipmentsData?.count || 0) / pageSize) || 1}
+            totalCount={shipmentsData?.count || 0}
+            pageSize={pageSize}
+            pageSizeOptions={[5, 10, 25, 50]}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(sz) => {
+              setPageSize(sz);
+              setCurrentPage(1);
+            }}
+          />
+        )}
       </Card>
 
       {/* Modal: Carrier Timeline & Peecho Payload Inspector */}

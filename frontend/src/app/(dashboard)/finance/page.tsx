@@ -4,8 +4,6 @@ import React, { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Receipt,
-  Calculator,
-  Layers,
   FileText,
   DollarSign,
   TrendingUp,
@@ -17,8 +15,6 @@ import {
   ShieldCheck,
   RefreshCw,
   Sparkles,
-  Sliders,
-  BookOpen,
   ArrowRight,
   Eye,
   Check,
@@ -32,16 +28,16 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
+import { Pagination } from "@/components/ui/pagination";
+import { useToast } from "@/context/notification-context";
 import {
-  DynamicPricingMatrix,
   PeechoInvoice,
-  QuoteResponse,
   Order,
 } from "@/services/api/types";
 
 export default function FinancePage() {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<"invoices" | "matrix" | "calculator">("invoices");
+  const toast = useToast();
 
   // Invoice Generation Modal State
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState<boolean>(false);
@@ -56,55 +52,19 @@ export default function FinancePage() {
   // Inspect Invoice Line Items Modal State
   const [inspectedInvoice, setInspectedInvoice] = useState<PeechoInvoice | null>(null);
 
-  // Quote Calculator State
-  const [calcProductType, setCalcProductType] = useState<string>("PAPERBACK_BOOK");
-  const [calcPageCount, setCalcPageCount] = useState<number>(120);
-  const [calcPaperGsm, setCalcPaperGsm] = useState<number>(130);
-  const [calcBindingType, setCalcBindingType] = useState<string>("PUR_PERFECT_BOUND");
-  const [calcQuantity, setCalcQuantity] = useState<number>(50);
-  const [calcHasLamination, setCalcHasLamination] = useState<boolean>(true);
-  const [calcHasFoil, setCalcHasFoil] = useState<boolean>(false);
+  // Pagination States
+  const [invoicesPage, setInvoicesPage] = useState<number>(1);
+  const [invoicesPageSize, setInvoicesPageSize] = useState<number>(10);
 
   // Queries
   const { data: invoicesData, isLoading: isLoadingInvoices, refetch: refetchInvoices } = useQuery({
-    queryKey: ["finance", "invoices"],
-    queryFn: () => financeApi.getInvoices(),
-  });
-
-  const { data: pricingMatrixData } = useQuery({
-    queryKey: ["finance", "pricingMatrix"],
-    queryFn: () => financeApi.getPricingMatrix(),
+    queryKey: ["finance", "invoices", invoicesPage, invoicesPageSize],
+    queryFn: () => financeApi.getInvoices({ page: invoicesPage, page_size: invoicesPageSize }),
   });
 
   const { data: ordersData } = useQuery({
     queryKey: ["orders", "forInvoicing"],
     queryFn: () => ordersApi.getOrders(),
-  });
-
-  // Dynamic Quote Query
-  const { data: quoteData, isFetching: isCalculatingQuote } = useQuery({
-    queryKey: [
-      "finance",
-      "quote",
-      calcProductType,
-      calcPageCount,
-      calcPaperGsm,
-      calcBindingType,
-      calcQuantity,
-      calcHasLamination,
-      calcHasFoil,
-    ],
-    queryFn: () =>
-      financeApi.calculateQuote({
-        product_type: calcProductType,
-        page_count: calcPageCount,
-        paper_gsm: calcPaperGsm,
-        binding_type: calcBindingType,
-        quantity: calcQuantity,
-        has_lamination: calcHasLamination,
-        has_foil: calcHasFoil,
-        currency: "EUR",
-      }),
   });
 
   // Mutations
@@ -120,6 +80,14 @@ export default function FinancePage() {
       setIsGenerateModalOpen(false);
       setSelectedOrderIds([]);
       queryClient.invalidateQueries({ queryKey: ["finance", "invoices"] });
+      toast.success(
+        "Invoice Generated Successfully",
+        `Monthly billing invoice for period "${billingPeriod}" created and ready for settlement.`
+      );
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.detail || err?.message || "Failed to generate invoice";
+      toast.error("Invoice Generation Failed", msg);
     },
   });
 
@@ -131,9 +99,18 @@ export default function FinancePage() {
       });
     },
     onSuccess: () => {
+      const invNum = selectedInvoiceForPayment?.invoice_number || "Invoice";
       setSelectedInvoiceForPayment(null);
       setPaymentReference("");
       queryClient.invalidateQueries({ queryKey: ["finance", "invoices"] });
+      toast.success(
+        "Payment Recorded Successfully",
+        `${invNum} has been marked as PAID and settled.`
+      );
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.detail || err?.message || "Failed to record payment";
+      toast.error("Payment Update Failed", msg);
     },
   });
 
@@ -155,6 +132,27 @@ export default function FinancePage() {
       .reduce((acc, inv) => acc + Number(inv.grand_total || 0), 0);
   }, [invoices]);
 
+  const availableOrders = useMemo(() => {
+    const list = [...(ordersData?.results || [])];
+    return list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }, [ordersData?.results]);
+
+  const isAllOrdersSelected = useMemo(() => {
+    return availableOrders.length > 0 && selectedOrderIds.length === availableOrders.length;
+  }, [availableOrders.length, selectedOrderIds.length]);
+
+  const isSomeOrdersSelected = useMemo(() => {
+    return selectedOrderIds.length > 0 && selectedOrderIds.length < availableOrders.length;
+  }, [availableOrders.length, selectedOrderIds.length]);
+
+  const toggleSelectAllOrders = () => {
+    if (isAllOrdersSelected) {
+      setSelectedOrderIds([]);
+    } else {
+      setSelectedOrderIds(availableOrders.map((o) => o.id));
+    }
+  };
+
   const toggleOrderSelection = (id: string) => {
     setSelectedOrderIds((prev) =>
       prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
@@ -171,13 +169,13 @@ export default function FinancePage() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold tracking-tight text-slate-900">Invoices & Pricing</h1>
+              <h1 className="text-xl font-bold tracking-tight text-slate-900">Invoices</h1>
               <Badge variant="primary" className="text-xs font-semibold">
                 Finance
               </Badge>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Customer monthly invoices, print pricing lists, and price quote calculator.
+              Customer monthly billing invoices, payment reconciliation, and settlements.
             </p>
           </div>
         </div>
@@ -257,51 +255,8 @@ export default function FinancePage() {
         </Card>
       </div>
 
-      {/* Tabs Navigation Bar */}
-      <div className="flex border-b border-slate-200 gap-6 text-xs font-bold">
-        <button
-          onClick={() => setActiveTab("invoices")}
-          className={`pb-3 flex items-center gap-2 border-b-2 transition-all ${
-            activeTab === "invoices"
-              ? "border-[#0073EA] text-[#0073EA]"
-              : "border-transparent text-slate-500 hover:text-slate-900"
-          }`}
-        >
-          <FileText className="w-4 h-4" />
-          <span>Invoices</span>
-          <span className="px-1.5 py-0.5 rounded-full bg-blue-50 text-[#0073EA] text-[10px]">
-            {invoices.length}
-          </span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab("matrix")}
-          className={`pb-3 flex items-center gap-2 border-b-2 transition-all ${
-            activeTab === "matrix"
-              ? "border-[#0073EA] text-[#0073EA]"
-              : "border-transparent text-slate-500 hover:text-slate-900"
-          }`}
-        >
-          <Layers className="w-4 h-4" />
-          <span>Price List</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab("calculator")}
-          className={`pb-3 flex items-center gap-2 border-b-2 transition-all ${
-            activeTab === "calculator"
-              ? "border-[#0073EA] text-[#0073EA]"
-              : "border-transparent text-slate-500 hover:text-slate-900"
-          }`}
-        >
-          <Calculator className="w-4 h-4" />
-          <span>Price Calculator</span>
-        </button>
-      </div>
-
-      {/* TAB 1: INVOICES */}
-      {activeTab === "invoices" && (
-        <Card>
+      {/* Invoices Table Card */}
+      <Card>
           <CardHeader className="p-4 border-b border-slate-100 flex flex-row items-center justify-between">
             <div className="flex items-center gap-2">
               <FileText className="w-4 h-4 text-[#0073EA]" />
@@ -427,248 +382,23 @@ export default function FinancePage() {
                 )}
               </tbody>
             </table>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* TAB 2: PRICING MATRIX */}
-      {activeTab === "matrix" && (
-        <Card>
-          <CardHeader className="p-4 border-b border-slate-100 flex flex-row items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Layers className="w-4 h-4 text-[#0073EA]" />
-              <CardTitle className="text-sm font-bold text-slate-900">Price List</CardTitle>
+            <div className="border-t border-slate-100">
+              <Pagination
+                currentPage={invoicesData?.current_page || invoicesPage}
+                totalPages={invoicesData?.total_pages || Math.ceil((invoicesData?.count || 0) / invoicesPageSize) || 1}
+                pageSize={invoicesData?.page_size || invoicesPageSize}
+                totalCount={invoicesData?.count || 0}
+                onPageChange={(p) => setInvoicesPage(p)}
+                onPageSizeChange={(s) => {
+                  setInvoicesPageSize(s);
+                  setInvoicesPage(1);
+                }}
+                pageSizeOptions={[10, 25, 50]}
+              />
             </div>
-            <span className="text-[11px] text-slate-400">Base fee + sheet cost + binding</span>
-          </CardHeader>
-
-          <CardContent className="p-0 overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="bg-slate-50/75 border-b border-slate-100 text-slate-500 font-semibold">
-                  <th className="py-3 px-4">Product Type</th>
-                  <th className="py-3 px-4">Binding Type</th>
-                  <th className="py-3 px-4">Paper Stock</th>
-                  <th className="py-3 px-4">Base Fee</th>
-                  <th className="py-3 px-4">Rate per Sheet</th>
-                  <th className="py-3 px-4">Binding Cost</th>
-                  <th className="py-3 px-4">Lamination</th>
-                  <th className="py-3 px-4">Volume Discount</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {pricingMatrixData?.results?.map((m: DynamicPricingMatrix) => (
-                  <tr key={m.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3.5 px-4 font-bold text-slate-900">
-                      {m.product_type_display || m.product_type}
-                    </td>
-                    <td className="py-3.5 px-4 text-slate-600">
-                      {m.binding_type_display || m.binding_type}
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-mono font-medium">
-                        {m.paper_stock_gsm} GSM
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 font-mono text-slate-700">€{Number(m.base_fee).toFixed(2)}</td>
-                    <td className="py-3.5 px-4 font-mono text-slate-700">€{Number(m.rate_per_sheet).toFixed(4)}</td>
-                    <td className="py-3.5 px-4 font-mono text-slate-700">€{Number(m.binding_cost).toFixed(2)}</td>
-                    <td className="py-3.5 px-4 font-mono text-slate-700">€{Number(m.lamination_cost).toFixed(2)}</td>
-                    <td className="py-3.5 px-4 text-[11px] text-slate-500">
-                      <span className="text-emerald-700 font-semibold">10% @ 50+</span> •{" "}
-                      <span className="text-emerald-700 font-semibold">18% @ 200+</span> •{" "}
-                      <span className="text-emerald-700 font-semibold">25% @ 500+</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </CardContent>
         </Card>
-      )}
 
-      {/* TAB 3: PRICE CALCULATOR */}
-      {activeTab === "calculator" && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Controls Form */}
-          <div className="lg:col-span-6 space-y-4">
-            <Card className="p-5 border-slate-200/80 space-y-4">
-              <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-                <Sliders className="w-4 h-4 text-[#0073EA]" />
-                <h3 className="text-sm font-bold text-slate-900">Product Configuration</h3>
-              </div>
-
-              {/* Product Type */}
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">Product Type</label>
-                <select
-                  value={calcProductType}
-                  onChange={(e) => setCalcProductType(e.target.value)}
-                  className="w-full h-10 px-3 rounded-lg border border-slate-200 text-xs bg-white focus:ring-2 focus:ring-[#0073EA]"
-                >
-                  <option value="PAPERBACK_BOOK">Softcover PUR Perfect Bound Book</option>
-                  <option value="HARDCOVER_BOOK">Hardcover Case-Bound Rigid Board Book</option>
-                  <option value="SADDLE_STITCH_BOOKLET">Saddle-Stitched Magazine / Booklet</option>
-                  <option value="WIRE_O_CALENDAR">Wire-O Wall & Desk Calendar</option>
-                </select>
-              </div>
-
-              {/* Page Count & Quantity */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">Page Count</label>
-                  <input
-                    type="number"
-                    min={4}
-                    step={2}
-                    value={calcPageCount}
-                    onChange={(e) => setCalcPageCount(Number(e.target.value))}
-                    className="w-full h-10 px-3 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-[#0073EA]"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">Order Quantity</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={calcQuantity}
-                    onChange={(e) => setCalcQuantity(Number(e.target.value))}
-                    className="w-full h-10 px-3 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-[#0073EA]"
-                  />
-                </div>
-              </div>
-
-              {/* Paper Stock GSM */}
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">Paper Weight (GSM)</label>
-                <select
-                  value={calcPaperGsm}
-                  onChange={(e) => setCalcPaperGsm(Number(e.target.value))}
-                  className="w-full h-10 px-3 rounded-lg border border-slate-200 text-xs bg-white focus:ring-2 focus:ring-[#0073EA]"
-                >
-                  <option value={80}>80 GSM Woodfree Uncoated</option>
-                  <option value={115}>115 GSM Silk / Gloss</option>
-                  <option value={130}>130 GSM Premium Silk Interior</option>
-                  <option value={170}>170 GSM Matte Art Paper</option>
-                  <option value={250}>250 GSM Heavy Cover Stock</option>
-                </select>
-              </div>
-
-              {/* Finishing Addons Checkboxes */}
-              <div className="space-y-2 pt-2 border-t border-slate-100">
-                <label className="text-xs font-bold text-slate-700 block">Finishing Options</label>
-                <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-200/80">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="lam-toggle"
-                      checked={calcHasLamination}
-                      onChange={(e) => setCalcHasLamination(e.target.checked)}
-                      className="w-4 h-4 rounded text-[#0073EA]"
-                    />
-                    <label htmlFor="lam-toggle" className="text-xs text-slate-700 cursor-pointer">
-                      Cover Lamination (+€0.75)
-                    </label>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-200/80">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="foil-toggle"
-                      checked={calcHasFoil}
-                      onChange={(e) => setCalcHasFoil(e.target.checked)}
-                      className="w-4 h-4 rounded text-[#0073EA]"
-                    />
-                    <label htmlFor="foil-toggle" className="text-xs text-slate-700 cursor-pointer">
-                      Gold Foil Stamping (+€1.50)
-                    </label>
-                  </div>
-                </div>
-              </div>
-            </Card>
-          </div>
-
-          {/* Real-time Calculation Result Card */}
-          <div className="lg:col-span-6 space-y-4">
-            <Card className="p-5 border-2 border-[#0073EA]/80 bg-gradient-to-br from-white to-blue-50/30 shadow-md">
-              <div className="flex items-center justify-between pb-3 border-b border-blue-100">
-                <div className="flex items-center gap-2">
-                  <Calculator className="w-5 h-5 text-[#0073EA]" />
-                  <h3 className="text-sm font-bold text-slate-900">Price Estimate</h3>
-                </div>
-                {isCalculatingQuote ? (
-                  <RefreshCw className="w-4 h-4 text-[#0073EA] animate-spin" />
-                ) : (
-                  <Badge variant="success" className="text-[10px]">
-                    {quoteData?.tier_label}
-                  </Badge>
-                )}
-              </div>
-
-              {quoteData && (
-                <div className="space-y-4 pt-2 text-xs">
-                  {/* Unit Breakdown */}
-                  <div className="space-y-1.5 p-3 rounded-xl bg-white border border-slate-200">
-                    <div className="flex justify-between text-slate-500">
-                      <span>Machine Setup Fee:</span>
-                      <span className="font-mono">€{quoteData.cost_breakdown.base_machine_fee.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-slate-500">
-                      <span>Interior Pages ({quoteData.sheets_count} sheets):</span>
-                      <span className="font-mono">€{quoteData.cost_breakdown.interior_sheet_cost.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-slate-500">
-                      <span>Binding:</span>
-                      <span className="font-mono">€{quoteData.cost_breakdown.binding_finishing_cost.toFixed(2)}</span>
-                    </div>
-                    {calcHasLamination && (
-                      <div className="flex justify-between text-slate-500">
-                        <span>Cover Lamination:</span>
-                        <span className="font-mono">€{quoteData.cost_breakdown.lamination_addon.toFixed(2)}</span>
-                      </div>
-                    )}
-                    {calcHasFoil && (
-                      <div className="flex justify-between text-slate-500">
-                        <span>Foil Stamping:</span>
-                        <span className="font-mono">€{quoteData.cost_breakdown.foil_stamp_addon.toFixed(2)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between pt-1.5 border-t border-slate-100 font-semibold text-slate-800">
-                      <span>Unit Price:</span>
-                      <span className="font-mono text-[#0073EA]">€{quoteData.financial_summary.unit_price.toFixed(2)} / item</span>
-                    </div>
-                  </div>
-
-                  {/* Financial Total Box */}
-                  <div className="p-4 rounded-xl bg-slate-900 text-white space-y-2">
-                    <div className="flex justify-between text-slate-300">
-                      <span>Subtotal ({quoteData.quantity} Units):</span>
-                      <span className="font-mono">€{quoteData.financial_summary.subtotal.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-slate-300">
-                      <span>Tax (21%):</span>
-                      <span className="font-mono">€{quoteData.financial_summary.vat_amount.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-slate-300">
-                      <span>Estimated Shipping:</span>
-                      <span className="font-mono">€{quoteData.financial_summary.estimated_shipping.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between pt-2 border-t border-slate-800 font-bold text-base">
-                      <span>Total Amount:</span>
-                      <span className="text-emerald-400 font-mono">
-                        €{quoteData.financial_summary.grand_total.toFixed(2)} {quoteData.currency}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </Card>
-          </div>
-        </div>
-      )}
 
       {/* MODAL: CREATE INVOICE */}
       {isGenerateModalOpen && (
@@ -682,6 +412,11 @@ export default function FinancePage() {
               <label className="text-xs font-bold text-slate-700 block mb-1">Billing Period</label>
               <input
                 type="text"
+                name="finance_billing_period"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                data-lpignore="true"
                 value={billingPeriod}
                 onChange={(e) => setBillingPeriod(e.target.value)}
                 placeholder="e.g. September 2026 / W39"
@@ -693,6 +428,11 @@ export default function FinancePage() {
               <label className="text-xs font-bold text-slate-700 block mb-1">Tax Rate (%)</label>
               <input
                 type="text"
+                name="finance_tax_rate"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                data-lpignore="true"
                 value={taxRatePercent}
                 onChange={(e) => setTaxRatePercent(e.target.value)}
                 className="w-full h-10 px-3 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-[#0073EA]"
@@ -703,36 +443,72 @@ export default function FinancePage() {
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-xs font-bold text-slate-700">Select Orders to Include</label>
-                <span className="text-[11px] text-slate-400">
-                  {selectedOrderIds.length > 0 ? `${selectedOrderIds.length} Selected` : "All Recent Orders"}
-                </span>
+                {availableOrders.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={toggleSelectAllOrders}
+                    className="text-[11px] font-semibold text-[#0073EA] hover:underline cursor-pointer"
+                  >
+                    {isAllOrdersSelected ? "Deselect All" : "Select All"}
+                  </button>
+                )}
               </div>
 
-              <div className="max-h-48 overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-xl">
-                {ordersData?.results?.map((order: Order) => {
-                  const isChecked = selectedOrderIds.includes(order.id);
-                  return (
-                    <div
-                      key={order.id}
-                      onClick={() => toggleOrderSelection(order.id)}
-                      className={`p-2.5 text-xs flex items-center justify-between cursor-pointer transition-colors ${
-                        isChecked ? "bg-blue-50/70" : "hover:bg-slate-50"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => {}}
-                          className="w-3.5 h-3.5 rounded text-[#0073EA]"
-                        />
-                        <span className="font-mono font-bold text-slate-900">{order.order_number}</span>
-                        <span className="text-slate-500">({order.customer_name})</span>
-                      </div>
-                      <span className="font-mono text-slate-700">€{Number(order.total_amount || 14.5).toFixed(2)}</span>
+              <div className="border border-slate-200 rounded-xl overflow-hidden">
+                {availableOrders.length > 0 && (
+                  <div className="bg-slate-50 px-3 py-2 border-b border-slate-200 flex items-center justify-between text-xs font-semibold text-slate-600">
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={isAllOrdersSelected}
+                        ref={(el) => {
+                          if (el) el.indeterminate = isSomeOrdersSelected;
+                        }}
+                        onChange={toggleSelectAllOrders}
+                        className="w-3.5 h-3.5 rounded text-[#0073EA] focus:ring-0 cursor-pointer"
+                      />
+                      <span>Select All Orders ({availableOrders.length})</span>
+                    </label>
+                    <span className="text-[11px] font-normal text-slate-500">
+                      {selectedOrderIds.length > 0
+                        ? `${selectedOrderIds.length} of ${availableOrders.length} selected`
+                        : "All Recent Orders (Default)"}
+                    </span>
+                  </div>
+                )}
+
+                <div className="max-h-52 overflow-y-auto divide-y divide-slate-100">
+                  {availableOrders.length === 0 ? (
+                    <div className="p-4 text-center text-xs text-slate-400">
+                      No orders available to invoice.
                     </div>
-                  );
-                })}
+                  ) : (
+                    availableOrders.map((order: Order) => {
+                      const isChecked = selectedOrderIds.includes(order.id);
+                      return (
+                        <div
+                          key={order.id}
+                          onClick={() => toggleOrderSelection(order.id)}
+                          className={`p-2.5 text-xs flex items-center justify-between cursor-pointer transition-colors ${
+                            isChecked ? "bg-blue-50/70" : "hover:bg-slate-50"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => {}}
+                              className="w-3.5 h-3.5 rounded text-[#0073EA] cursor-pointer"
+                            />
+                            <span className="font-mono font-bold text-slate-900">{order.order_number}</span>
+                            <span className="text-slate-500">({order.customer_name})</span>
+                          </div>
+                          <span className="font-mono text-slate-700">€{Number(order.total_amount || 14.5).toFixed(2)}</span>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               </div>
             </div>
 
@@ -775,6 +551,11 @@ export default function FinancePage() {
               </label>
               <input
                 type="text"
+                name="finance_payment_reference"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                data-lpignore="true"
                 value={paymentReference}
                 onChange={(e) => setPaymentReference(e.target.value)}
                 placeholder="e.g. WIRE-EUR-9918239"

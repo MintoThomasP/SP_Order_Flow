@@ -7,6 +7,8 @@ export const prepressApi = {
     status?: string;
     order_id?: string;
     search?: string;
+    page?: number;
+    page_size?: number;
   }): Promise<PaginatedResponse<ArtworkVerification>> => {
     const res = await apiClient.get<PaginatedResponse<ArtworkVerification>>(
       "/prepress/verifications/",
@@ -22,9 +24,13 @@ export const prepressApi = {
   },
 
   // Approve artwork for press
-  approveArtwork: async (id: string): Promise<{ detail: string; verification: ArtworkVerification }> => {
+  approveArtwork: async (
+    id: string,
+    params?: { admin_approved?: boolean }
+  ): Promise<{ detail: string; verification: ArtworkVerification }> => {
     const res = await apiClient.post<{ detail: string; verification: ArtworkVerification }>(
-      `/prepress/verifications/${id}/approve/`
+      `/prepress/verifications/${id}/approve/`,
+      params || {}
     );
     return res.data;
   },
@@ -33,13 +39,15 @@ export const prepressApi = {
   flagPrepressError: async (
     id: string,
     errorReason: string,
-    comments?: string
+    comments?: string,
+    adminApproved?: boolean
   ): Promise<{ detail: string; verification: ArtworkVerification }> => {
     const res = await apiClient.post<{ detail: string; verification: ArtworkVerification }>(
       `/prepress/verifications/${id}/flag-error/`,
       {
         error_reason: errorReason,
         comments: comments || "Flagged via Prepress Inspection Workspace",
+        admin_approved: adminApproved,
       }
     );
     return res.data;

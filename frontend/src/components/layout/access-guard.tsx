@@ -12,12 +12,15 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { authApi } from "@/services/api";
 import {
   NAVIGATION_ITEMS,
   isPathAllowedForRole,
   getRoleAllowedSlugs,
   getRoleHomePath,
 } from "./navigation-config";
+
+const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
 export function RBACAccessGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -31,7 +34,17 @@ export function RBACAccessGuard({ children }: { children: React.ReactNode }) {
     try {
       const stored = localStorage.getItem("silverpoint_user");
       const token = localStorage.getItem("silverpoint_access_token");
+      const lastActivityStr = localStorage.getItem("silverpoint_last_activity");
+      const now = Date.now();
+
       if (stored && token) {
+        if (lastActivityStr && now - parseInt(lastActivityStr, 10) >= INACTIVITY_TIMEOUT_MS) {
+          authApi.logout();
+          setIsAuthenticated(false);
+          router.replace("/login?reason=inactivity");
+          return;
+        }
+        localStorage.setItem("silverpoint_last_activity", now.toString());
         setCurrentUser(JSON.parse(stored));
         setIsAuthenticated(true);
       } else {
@@ -43,6 +56,46 @@ export function RBACAccessGuard({ children }: { children: React.ReactNode }) {
       router.replace("/login");
     }
   }, [pathname, router]);
+
+  // Active inactivity timer: check every 10 seconds and update on user actions
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    let lastRecorded = Date.now();
+
+    const handleUserActivity = () => {
+      const now = Date.now();
+      // Throttle localStorage updates to at most once every 5 seconds
+      if (now - lastRecorded > 5000) {
+        lastRecorded = now;
+        localStorage.setItem("silverpoint_last_activity", now.toString());
+      }
+    };
+
+    const activityEvents = ["mousedown", "keydown", "scroll", "touchstart", "click"];
+    activityEvents.forEach((evt) => {
+      window.addEventListener(evt, handleUserActivity, { passive: true });
+    });
+
+    const checkInterval = setInterval(() => {
+      const lastStr = localStorage.getItem("silverpoint_last_activity");
+      if (lastStr) {
+        const last = parseInt(lastStr, 10);
+        if (Date.now() - last >= INACTIVITY_TIMEOUT_MS) {
+          authApi.logout();
+          setIsAuthenticated(false);
+          router.replace("/login?reason=inactivity");
+        }
+      }
+    }, 10000);
+
+    return () => {
+      activityEvents.forEach((evt) => {
+        window.removeEventListener(evt, handleUserActivity);
+      });
+      clearInterval(checkInterval);
+    };
+  }, [isAuthenticated, router]);
 
   if (!isMounted || isAuthenticated === null) {
     return (

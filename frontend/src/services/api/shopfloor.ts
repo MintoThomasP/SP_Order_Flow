@@ -9,9 +9,14 @@ export const shopfloorApi = {
   },
 
   // Get recent scan events
-  getRecentScans: async (station?: string): Promise<PaginatedResponse<ScanEventLog>> => {
+  getRecentScans: async (params?: {
+    station?: string;
+    page?: number;
+    page_size?: number;
+  } | string): Promise<PaginatedResponse<ScanEventLog>> => {
+    const queryParams = typeof params === "string" ? { station: params } : params;
     const res = await apiClient.get<PaginatedResponse<ScanEventLog>>("/shopfloor/recent-scans/", {
-      params: { station },
+      params: queryParams,
     });
     return res.data;
   },

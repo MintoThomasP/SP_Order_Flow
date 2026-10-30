@@ -9,7 +9,12 @@ import {
 
 export const dispatchApi = {
   // Get all registered shipments
-  getShipments: async (params?: { search?: string; status?: string }): Promise<PaginatedResponse<Shipment>> => {
+  getShipments: async (params?: {
+    search?: string;
+    status?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<PaginatedResponse<Shipment>> => {
     const res = await apiClient.get<PaginatedResponse<Shipment>>("/dispatch/shipments/", { params });
     return res.data;
   },

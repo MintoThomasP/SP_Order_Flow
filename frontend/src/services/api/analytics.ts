@@ -17,7 +17,12 @@ export const analyticsApi = {
   },
 
   // List all damaged print and reprint logs
-  getReprints: async (params?: { search?: string; status?: string }): Promise<PaginatedResponse<ReprintDamageLog>> => {
+  getReprints: async (params?: {
+    search?: string;
+    status?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<PaginatedResponse<ReprintDamageLog>> => {
     const res = await apiClient.get<PaginatedResponse<ReprintDamageLog>>("/analytics/reprints/", { params });
     return res.data;
   },
@@ -29,8 +34,12 @@ export const analyticsApi = {
   },
 
   // Get SLA alert logs
-  getSLAAlerts: async (): Promise<PaginatedResponse<SLAAlertLog>> => {
-    const res = await apiClient.get<PaginatedResponse<SLAAlertLog>>("/analytics/sla-alerts/");
+  getSLAAlerts: async (params?: {
+    page?: number;
+    page_size?: number;
+    search?: string;
+  }): Promise<PaginatedResponse<SLAAlertLog>> => {
+    const res = await apiClient.get<PaginatedResponse<SLAAlertLog>>("/analytics/sla-alerts/", { params });
     return res.data;
   },
 
@@ -43,8 +52,12 @@ export const analyticsApi = {
   },
 
   // Get Odoo synchronization transaction logs
-  getOdooSyncLogs: async (): Promise<PaginatedResponse<OdooSyncLog>> => {
-    const res = await apiClient.get<PaginatedResponse<OdooSyncLog>>("/analytics/odoo-logs/");
+  getOdooSyncLogs: async (params?: {
+    page?: number;
+    page_size?: number;
+    search?: string;
+  }): Promise<PaginatedResponse<OdooSyncLog>> => {
+    const res = await apiClient.get<PaginatedResponse<OdooSyncLog>>("/analytics/odoo-logs/", { params });
     return res.data;
   },
 

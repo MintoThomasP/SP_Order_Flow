@@ -2,13 +2,15 @@
 Serializers for Production Batches and Job Tickets.
 """
 from rest_framework import serializers
-from apps.production.models import ProductionBatch
+from apps.production.models import ProductionBatch, PrintMachine, BindingMethod
 from apps.orders.serializers import OrderSerializer
 from apps.core.serializers.lookups import EntityStatusSerializer
 
 
 class ProductionBatchSerializer(serializers.ModelSerializer):
     orders = OrderSerializer(many=True, read_only=True)
+    status = serializers.CharField(source="status.code", read_only=True, default="QUEUED_PRESS")
+    status_code = serializers.CharField(source="status.code", read_only=True, default="QUEUED_PRESS")
     status_details = EntityStatusSerializer(source="status", read_only=True)
     assigned_operator_name = serializers.SerializerMethodField()
     press_label = serializers.CharField(source="get_target_press_display", read_only=True)
@@ -26,6 +28,7 @@ class ProductionBatchSerializer(serializers.ModelSerializer):
             "target_press",
             "press_label",
             "status",
+            "status_code",
             "status_details",
             "total_orders_count",
             "total_items_count",
@@ -80,3 +83,44 @@ class CreateProductionBatchSerializer(serializers.Serializer):
         allow_blank=True,
         default="",
     )
+
+
+class PrintMachineSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PrintMachine
+        fields = [
+            "id",
+            "code",
+            "name",
+            "description",
+            "sheet_format",
+            "max_speed_cph",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+    def validate_code(self, value):
+        return value.strip().upper().replace(" ", "_")
+
+
+class BindingMethodSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BindingMethod
+        fields = [
+            "id",
+            "code",
+            "name",
+            "description",
+            "min_pages",
+            "max_pages",
+            "default_caliper_mm",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+    def validate_code(self, value):
+        return value.strip().upper().replace(" ", "_")

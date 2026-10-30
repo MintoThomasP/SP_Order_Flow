@@ -26,12 +26,22 @@ export const apiClient = axios.create({
   timeout: 15000,
 });
 
-// Request interceptor to attach JWT Bearer token
+// Request interceptor to attach JWT Bearer token and staff role
 apiClient.interceptors.request.use((config) => {
   if (typeof window !== "undefined") {
     const token = localStorage.getItem("silverpoint_access_token");
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
+    }
+    const userStr = localStorage.getItem("silverpoint_user");
+    if (userStr && config.headers) {
+      try {
+        const u = JSON.parse(userStr);
+        const r = u?.role?.code || u?.role_code || u?.role || "";
+        if (r) {
+          config.headers["X-Staff-Role"] = r;
+        }
+      } catch (e) {}
     }
   }
   return config;

@@ -189,16 +189,23 @@ def generate_job_ticket_pdf(batch) -> dict:
 
     for ord_obj in batch.orders.all():
         for item in ord_obj.items.all():
-            dest = f"{ord_obj.shipping_address.get('city', '')}, {ord_obj.shipping_address.get('country', '')}"
-            s3_link = f"s3://silverpoint-vault/orders/{ord_obj.peecho_order_id}/interior.pdf"
+            dest = "N/A"
+            if ord_obj.shipping_address and isinstance(ord_obj.shipping_address, dict):
+                city = ord_obj.shipping_address.get("city", "")
+                country = ord_obj.shipping_address.get("country", "")
+                dest = f"{city}, {country}".strip(", ") or "N/A"
+            
+            peecho_id_val = str(ord_obj.peecho_order_id or "DIRECT")
+            order_num_val = str(ord_obj.order_number or "N/A")
+            s3_link = f"s3://silverpoint-vault/orders/{ord_obj.peecho_order_id or ord_obj.order_number}/interior.pdf"
 
             manifest_rows.append([
-                Paragraph(ord_obj.order_number, body_cell_style),
-                Paragraph(ord_obj.peecho_order_id, body_cell_style),
-                Paragraph(item.product_type, body_cell_style),
-                Paragraph(str(item.quantity), body_cell_style),
-                Paragraph(f"{item.page_count}pp", body_cell_style),
-                Paragraph(f"{item.spine_width_mm}mm", body_cell_style),
+                Paragraph(order_num_val, body_cell_style),
+                Paragraph(peecho_id_val, body_cell_style),
+                Paragraph(str(item.product_type or "Book"), body_cell_style),
+                Paragraph(str(item.quantity or 1), body_cell_style),
+                Paragraph(f"{item.page_count or 0}pp", body_cell_style),
+                Paragraph(f"{item.spine_width_mm or 0}mm", body_cell_style),
                 Paragraph(dest, body_cell_style),
                 Paragraph(s3_link, mono_style),
             ])

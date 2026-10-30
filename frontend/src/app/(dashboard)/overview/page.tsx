@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -57,6 +57,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
+import { Pagination } from "@/components/ui/pagination";
 import {
   ReprintDamageLog,
   SLAAlertLog,
@@ -86,9 +87,16 @@ export default function OperationsOverviewPage() {
     }
   }, []);
 
-  const userRole = currentUser?.role?.code || currentUser?.role_code || "SUPER_ADMIN";
+  const userRole = currentUser?.role?.code || currentUser?.role_code || currentUser?.role || (currentUser?.is_superuser ? "SUPER_ADMIN" : "STAFF");
   const staffName = currentUser?.first_name ? `${currentUser.first_name} ${currentUser.last_name || ""}`.trim() : (currentUser?.username || "Operations Master");
-  const isAdmin = userRole === "SUPER_ADMIN" || userRole === "ADMIN";
+  const isAdmin = userRole === "SUPER_ADMIN" || userRole === "ADMIN" || Boolean(currentUser?.is_superuser);
+
+  const isPrepressRole = userRole === "PREPRESS_SPECIALIST";
+  const isProductionRole = userRole === "PRODUCTION_MANAGER" || userRole === "SHOPFLOOR_OPERATOR";
+  const isShippingRole = userRole === "DISPATCH_SPECIALIST" || userRole === "DISPATCH_FINANCE_SPECIALIST";
+  const isFinanceRole = userRole === "FINANCE_SPECIALIST";
+
+  const [adminStationQueueTab, setAdminStationQueueTab] = useState<"prepress" | "production" | "dispatch">("prepress");
 
   // Active Tab
   const [activeSection, setActiveSection] = useState<"workstation" | "analytics" | "reprints" | "odoo">("analytics");
@@ -118,9 +126,25 @@ export default function OperationsOverviewPage() {
     refetchInterval: 15000,
   });
 
+  // Reprints Pagination
+  const [reprintsPage, setReprintsPage] = useState(1);
+  const [reprintsPageSize, setReprintsPageSize] = useState(10);
+
+  // Odoo Logs Pagination
+  const [odooPage, setOdooPage] = useState(1);
+  const [odooPageSize, setOdooPageSize] = useState(10);
+
+  // Workstation Queue Pagination
+  const [prepressQueuePage, setPrepressQueuePage] = useState(1);
+  const [prepressQueuePageSize, setPrepressQueuePageSize] = useState(5);
+  const [dispatchQueuePage, setDispatchQueuePage] = useState(1);
+  const [dispatchQueuePageSize, setDispatchQueuePageSize] = useState(5);
+  const [prodQueuePage, setProdQueuePage] = useState(1);
+  const [prodQueuePageSize, setProdQueuePageSize] = useState(5);
+
   const { data: reprintsData, refetch: refetchReprints } = useQuery({
-    queryKey: ["analytics", "reprints"],
-    queryFn: () => analyticsApi.getReprints(),
+    queryKey: ["analytics", "reprints", reprintsPage, reprintsPageSize],
+    queryFn: () => analyticsApi.getReprints({ page: reprintsPage, page_size: reprintsPageSize }),
   });
 
   const { data: slaAlertsData, refetch: refetchSlaAlerts } = useQuery({
@@ -129,8 +153,8 @@ export default function OperationsOverviewPage() {
   });
 
   const { data: odooLogsData, refetch: refetchOdooLogs } = useQuery({
-    queryKey: ["analytics", "odooLogs"],
-    queryFn: () => analyticsApi.getOdooSyncLogs(),
+    queryKey: ["analytics", "odooLogs", odooPage, odooPageSize],
+    queryFn: () => analyticsApi.getOdooSyncLogs({ page: odooPage, page_size: odooPageSize }),
   });
 
   const { data: ordersData } = useQuery({
@@ -161,15 +185,45 @@ export default function OperationsOverviewPage() {
     ["PRODUCTION_COMPLETED", "READY_FOR_DISPATCH", "DISPATCHED", "OUT_FOR_DELIVERY"].includes(o.status_details?.code || o.status)
   );
 
+  const paginatedPrepressPendingOrders = useMemo(() => {
+    const start = (prepressQueuePage - 1) * prepressQueuePageSize;
+    return prepressPendingOrders.slice(start, start + prepressQueuePageSize);
+  }, [prepressPendingOrders, prepressQueuePage, prepressQueuePageSize]);
+
+  const paginatedDispatchOrders = useMemo(() => {
+    const start = (dispatchQueuePage - 1) * dispatchQueuePageSize;
+    return dispatchOrders.slice(start, start + dispatchQueuePageSize);
+  }, [dispatchOrders, dispatchQueuePage, dispatchQueuePageSize]);
+
+  const paginatedProductionOrders = useMemo(() => {
+    const start = (prodQueuePage - 1) * prodQueuePageSize;
+    return productionOrders.slice(start, start + prodQueuePageSize);
+  }, [productionOrders, prodQueuePage, prodQueuePageSize]);
+
   // Mutations
   const reportDamageMutation = useMutation({
     mutationFn: (payload: ReportDamagePayload) => analyticsApi.reportDamage(payload),
     onSuccess: () => {
+      const orderRef = orderIdentifier;
       setIsDamageModalOpen(false);
       setOrderIdentifier("");
       setFailureDescription("");
       queryClient.invalidateQueries({ queryKey: ["analytics"] });
       queryClient.invalidateQueries({ queryKey: ["orders"] });
+      addNotification({
+        title: "Damage Incident Logged",
+        message: `Damage report filed for order ${orderRef}. Reprint ticket created.`,
+        type: "warning",
+        category: "SYSTEM",
+      });
+    },
+    onError: (err: any) => {
+      addNotification({
+        title: "Damage Report Failed",
+        message: err?.message || "Could not log incident report.",
+        type: "error",
+        category: "SYSTEM",
+      });
     },
   });
 
@@ -177,6 +231,12 @@ export default function OperationsOverviewPage() {
     mutationFn: () => analyticsApi.triggerSLACheck(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["analytics", "slaAlerts"] });
+      addNotification({
+        title: "SLA Monitor Refreshed",
+        message: "Order turnaround deadlines and rush queue audited.",
+        type: "info",
+        category: "SLA_ALERT",
+      });
     },
   });
 
@@ -185,6 +245,20 @@ export default function OperationsOverviewPage() {
       analyticsApi.triggerOdooSync(payload.model_name, payload.reference_id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["analytics", "odooLogs"] });
+      addNotification({
+        title: "Odoo ERP Synchronized",
+        message: "Orders and ledger items synchronized with Odoo ERP.",
+        type: "success",
+        category: "SYSTEM",
+      });
+    },
+    onError: (err: any) => {
+      addNotification({
+        title: "Odoo Sync Failed",
+        message: err?.message || "Could not connect to Odoo API.",
+        type: "error",
+        category: "SYSTEM",
+      });
     },
   });
 
@@ -329,8 +403,18 @@ export default function OperationsOverviewPage() {
             </div>
           </div>
           <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-            <span>Incoming</span>
-            <span className="font-bold text-slate-800">{prepressPendingOrders.length} In Artwork Check</span>
+            <span>
+              {isPrepressRole ? "Prepress Queue" : isShippingRole ? "Shipping Parcels" : isProductionRole ? "Print Floor" : "Incoming Orders"}
+            </span>
+            <span className="font-bold text-slate-800">
+              {isPrepressRole
+                ? `${prepressPendingOrders.length} In Artwork Check`
+                : isShippingRole
+                ? `${dispatchOrders.length} Ready to Ship`
+                : isProductionRole
+                ? `${productionOrders.length} In Production`
+                : `${prepressPendingOrders.length} In Artwork Check`}
+            </span>
           </div>
         </div>
 
@@ -564,11 +648,13 @@ export default function OperationsOverviewPage() {
           <FileCheck2 className="w-4 h-4" />
           <span>{isAdmin ? "Workstation Queue Preview" : "My Work Queue"}</span>
           <span className="px-1.5 py-0.5 rounded-full bg-blue-50 text-[#0073EA] text-[10px]">
-            {userRole === "PREPRESS_SPECIALIST"
+            {isPrepressRole
               ? prepressPendingOrders.length
-              : userRole === "DISPATCH_FINANCE_SPECIALIST"
+              : isShippingRole
               ? dispatchOrders.length
-              : productionOrders.length}
+              : isProductionRole
+              ? productionOrders.length
+              : ordersList.length}
           </span>
         </button>
 
@@ -586,7 +672,7 @@ export default function OperationsOverviewPage() {
         </button>
 
         {/* Reprints Queue */}
-        {(isAdmin || userRole === "PRODUCTION_MANAGER" || userRole === "SHOPFLOOR_OPERATOR") && (
+        {(isAdmin || isProductionRole) && (
           <button
             onClick={() => setActiveSection("reprints")}
             className={`pb-3 flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
@@ -646,16 +732,63 @@ export default function OperationsOverviewPage() {
             <div className="flex items-center gap-2 text-xs">
               <span className="text-[11px] text-slate-400">Assigned Station:</span>
               <span className="px-2.5 py-1 rounded-lg bg-blue-50 text-[#0073EA] font-bold border border-blue-200/80">
-                {userRole === "PREPRESS_SPECIALIST" && "Artwork & Prepress Station"}
-                {(userRole === "PRODUCTION_MANAGER" || userRole === "SHOPFLOOR_OPERATOR") && "Printing & Bindery Station"}
-                {userRole === "DISPATCH_FINANCE_SPECIALIST" && "Packing & Shipping Station"}
-                {isAdmin && "All Stations (Admin)"}
+                {isPrepressRole && "Artwork & Prepress Station"}
+                {isProductionRole && "Printing & Bindery Station"}
+                {isShippingRole && "Packing & Shipping Station"}
+                {isFinanceRole && "Billing & Financial Audits"}
+                {userRole === "INTEGRATION_SPECIALIST" && "API & Integration Station"}
+                {isAdmin && "All Stations (Admin Overview)"}
               </span>
             </div>
           </div>
 
+          {/* Supervisor Station Switcher (Admins Only) */}
+          {isAdmin && (
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-slate-50 border border-slate-200/80 rounded-xl">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-700">Supervisor Station Switcher:</span>
+                <span className="text-[11px] text-slate-500">Preview active order queues for any operational department</span>
+              </div>
+              <div className="flex items-center gap-1.5 bg-white p-1 rounded-lg border border-slate-200 shadow-2xs">
+                <button
+                  type="button"
+                  onClick={() => setAdminStationQueueTab("prepress")}
+                  className={`px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                    adminStationQueueTab === "prepress"
+                      ? "bg-purple-600 text-white shadow-xs font-bold"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                  }`}
+                >
+                  Prepress Queue ({prepressPendingOrders.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdminStationQueueTab("production")}
+                  className={`px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                    adminStationQueueTab === "production"
+                      ? "bg-amber-600 text-white shadow-xs font-bold"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                  }`}
+                >
+                  Print Floor ({productionOrders.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdminStationQueueTab("dispatch")}
+                  className={`px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                    adminStationQueueTab === "dispatch"
+                      ? "bg-[#0073EA] text-white shadow-xs font-bold"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                  }`}
+                >
+                  Shipping & Tracking ({dispatchOrders.length})
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Operational Queue Table */}
-          {userRole === "PREPRESS_SPECIALIST" ? (
+          {(isPrepressRole || (isAdmin && adminStationQueueTab === "prepress")) ? (
             /* Prepress Artwork Verification Queue */
             <Card className="border-slate-200/80">
               <CardHeader className="p-4 border-b border-slate-100 flex flex-row items-center justify-between">
@@ -684,8 +817,8 @@ export default function OperationsOverviewPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {prepressPendingOrders.length > 0 ? (
-                      prepressPendingOrders.map((order) => {
+                    {paginatedPrepressPendingOrders.length > 0 ? (
+                      paginatedPrepressPendingOrders.map((order) => {
                         const item = order.items?.[0] || order.peecho_metadata?.items?.[0];
                         const pdfUrl = item?.pdf_artwork_url || item?.pdf_cover_url;
 
@@ -778,9 +911,23 @@ export default function OperationsOverviewPage() {
                     )}
                   </tbody>
                 </table>
+                <div className="border-t border-slate-100">
+                  <Pagination
+                    currentPage={prepressQueuePage}
+                    totalPages={Math.ceil(prepressPendingOrders.length / prepressQueuePageSize) || 1}
+                    pageSize={prepressQueuePageSize}
+                    totalCount={prepressPendingOrders.length}
+                    onPageChange={(p) => setPrepressQueuePage(p)}
+                    onPageSizeChange={(s) => {
+                      setPrepressQueuePageSize(s);
+                      setPrepressQueuePage(1);
+                    }}
+                    pageSizeOptions={[5, 10, 20]}
+                  />
+                </div>
               </CardContent>
             </Card>
-          ) : userRole === "DISPATCH_FINANCE_SPECIALIST" ? (
+          ) : (isShippingRole || (isAdmin && adminStationQueueTab === "dispatch")) ? (
             /* Dispatch & Fulfillment Queue */
             <Card className="border-slate-200/80">
               <CardHeader className="p-4 border-b border-slate-100 flex flex-row items-center justify-between">
@@ -808,8 +955,8 @@ export default function OperationsOverviewPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {dispatchOrders.length > 0 ? (
-                      dispatchOrders.map((order) => {
+                    {paginatedDispatchOrders.length > 0 ? (
+                      paginatedDispatchOrders.map((order) => {
                         const status = order.status_details?.code || order.status;
                         return (
                           <tr key={order.id} className="hover:bg-slate-50/80 transition-colors">
@@ -893,6 +1040,20 @@ export default function OperationsOverviewPage() {
                     )}
                   </tbody>
                 </table>
+                <div className="border-t border-slate-100">
+                  <Pagination
+                    currentPage={dispatchQueuePage}
+                    totalPages={Math.ceil(dispatchOrders.length / dispatchQueuePageSize) || 1}
+                    pageSize={dispatchQueuePageSize}
+                    totalCount={dispatchOrders.length}
+                    onPageChange={(p) => setDispatchQueuePage(p)}
+                    onPageSizeChange={(s) => {
+                      setDispatchQueuePageSize(s);
+                      setDispatchQueuePage(1);
+                    }}
+                    pageSizeOptions={[5, 10, 20]}
+                  />
+                </div>
               </CardContent>
             </Card>
           ) : (
@@ -925,8 +1086,8 @@ export default function OperationsOverviewPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {productionOrders.length > 0 ? (
-                      productionOrders.map((order) => {
+                    {paginatedProductionOrders.length > 0 ? (
+                      paginatedProductionOrders.map((order) => {
                         const status = order.status_details?.code || order.status;
                         const item = order.items?.[0] || order.peecho_metadata?.items?.[0];
 
@@ -996,6 +1157,20 @@ export default function OperationsOverviewPage() {
                     )}
                   </tbody>
                 </table>
+                <div className="border-t border-slate-100">
+                  <Pagination
+                    currentPage={prodQueuePage}
+                    totalPages={Math.ceil(productionOrders.length / prodQueuePageSize) || 1}
+                    pageSize={prodQueuePageSize}
+                    totalCount={productionOrders.length}
+                    onPageChange={(p) => setProdQueuePage(p)}
+                    onPageSizeChange={(s) => {
+                      setProdQueuePageSize(s);
+                      setProdQueuePage(1);
+                    }}
+                    pageSizeOptions={[5, 10, 20]}
+                  />
+                </div>
               </CardContent>
             </Card>
           )}
@@ -1345,6 +1520,20 @@ export default function OperationsOverviewPage() {
                 )}
               </tbody>
             </table>
+            <div className="border-t border-slate-100">
+              <Pagination
+                currentPage={reprintsData?.current_page || reprintsPage}
+                totalPages={reprintsData?.total_pages || Math.ceil((reprintsData?.count || 0) / reprintsPageSize) || 1}
+                pageSize={reprintsData?.page_size || reprintsPageSize}
+                totalCount={reprintsData?.count || 0}
+                onPageChange={(p) => setReprintsPage(p)}
+                onPageSizeChange={(s) => {
+                  setReprintsPageSize(s);
+                  setReprintsPage(1);
+                }}
+                pageSizeOptions={[10, 25, 50]}
+              />
+            </div>
           </CardContent>
         </Card>
       )}
@@ -1475,6 +1664,20 @@ export default function OperationsOverviewPage() {
                   )}
                 </tbody>
               </table>
+              <div className="border-t border-slate-100">
+                <Pagination
+                  currentPage={odooLogsData?.current_page || odooPage}
+                  totalPages={odooLogsData?.total_pages || Math.ceil((odooLogsData?.count || 0) / odooPageSize) || 1}
+                  pageSize={odooLogsData?.page_size || odooPageSize}
+                  totalCount={odooLogsData?.count || 0}
+                  onPageChange={(p) => setOdooPage(p)}
+                  onPageSizeChange={(s) => {
+                    setOdooPageSize(s);
+                    setOdooPage(1);
+                  }}
+                  pageSizeOptions={[10, 25, 50]}
+                />
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -1487,13 +1690,19 @@ export default function OperationsOverviewPage() {
           onClose={() => setIsDamageModalOpen(false)}
           title="Report Defect & Request Reprint"
         >
-          <form onSubmit={handleReportDamageSubmit} className="space-y-4">
+          <form onSubmit={handleReportDamageSubmit} autoComplete="off" className="space-y-4">
             <div>
               <label className="text-xs font-bold text-slate-700 block mb-1">
                 Order Number <span className="text-rose-500">*</span>
               </label>
               <input
                 type="text"
+                name="defect_order_number"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                data-lpignore="true"
                 required
                 value={orderIdentifier}
                 onChange={(e) => setOrderIdentifier(e.target.value)}
@@ -1557,6 +1766,9 @@ export default function OperationsOverviewPage() {
                 <label className="text-xs font-bold text-slate-700 block mb-1">Damaged Sheets Count</label>
                 <input
                   type="number"
+                  name="defect_waste_sheets"
+                  autoComplete="off"
+                  data-lpignore="true"
                   min={1}
                   value={wasteSheets}
                   onChange={(e) => setWasteSheets(Number(e.target.value))}
@@ -1568,6 +1780,9 @@ export default function OperationsOverviewPage() {
                 <label className="text-xs font-bold text-slate-700 block mb-1">Estimated Cost (€)</label>
                 <input
                   type="number"
+                  name="defect_cost_loss"
+                  autoComplete="off"
+                  data-lpignore="true"
                   step="0.5"
                   value={costLoss}
                   onChange={(e) => setCostLoss(e.target.value)}

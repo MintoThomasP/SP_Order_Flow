@@ -127,13 +127,62 @@ class UserViewSet(viewsets.ModelViewSet):
             request=self.request,
         )
 
+    def destroy(self, request, *args, **kwargs):
+        user = self.get_object()
+        if user.is_superuser or (user.role and user.role.code == "SUPER_ADMIN"):
+            return Response(
+                {"error": "The Super Admin account is protected and cannot be deleted."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=["post"], url_path="change-password")
+    def change_password(self, request, pk=None):
+        """
+        POST /api/v1/auth/users/{id}/change-password/
+        Changes password for a user (specifically supported for protected Super Admin).
+        """
+        user = self.get_object()
+        password = request.data.get("password")
+        if not password or len(str(password).strip()) < 6:
+            return Response(
+                {"error": "Password must be at least 6 characters long."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        user.set_password(str(password).strip())
+        user.save()
+
+        log_staff_action(
+            user=request.user if request.user.is_authenticated else None,
+            action="PASSWORD_CHANGE",
+            resource_type="USER",
+            resource_id=str(user.id),
+            details={
+                "target_user": user.email,
+                "is_super_admin": user.is_superuser or (user.role and user.role.code == "SUPER_ADMIN"),
+            },
+            request=request,
+        )
+
+        return Response(
+            {"detail": f"Password for {user.email} updated successfully."},
+            status=status.HTTP_200_OK,
+        )
+
     @action(detail=True, methods=["post"], url_path="assign-role")
     def assign_role(self, request, pk=None):
         """
         POST /api/v1/auth/users/{id}/assign-role/
         Assigns a new SystemRole to a staff user and records an audit log.
         """
+        from django.db.models import Q
         user = self.get_object()
+        if user.is_superuser or (user.role and user.role.code == "SUPER_ADMIN"):
+            return Response(
+                {"error": "The Super Admin account role is permanent and cannot be modified."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         serializer = RoleAssignmentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -150,6 +199,16 @@ class UserViewSet(viewsets.ModelViewSet):
                 {"error": "The 'Peecho API Service Worker' role is an automated machine daemon and cannot be assigned to human staff members."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        if new_role.code == "SUPER_ADMIN":
+            existing_super = User.objects.filter(
+                Q(is_superuser=True) | Q(role__code="SUPER_ADMIN")
+            ).exclude(id=user.id)
+            if existing_super.exists():
+                return Response(
+                    {"error": "Only one Super Admin is allowed in the system. The Super Admin role cannot be assigned to another user."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         old_role_name = user.role.name if user.role else "None"
         user.role = new_role
@@ -186,6 +245,12 @@ class UserViewSet(viewsets.ModelViewSet):
         Toggles staff active/suspended status.
         """
         user = self.get_object()
+        if user.is_superuser or (user.role and user.role.code == "SUPER_ADMIN"):
+            return Response(
+                {"error": "The Super Admin account is permanent and cannot be deactivated or suspended."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         user.is_active = not user.is_active
         user.save()
 

@@ -22,15 +22,21 @@ import {
   ExternalLink,
   Download,
   Eye,
+  Lock,
+  ShieldAlert,
+  ShieldCheck,
 } from "lucide-react";
-import { prepressApi, ordersApi, ArtworkVerification, Order } from "@/services/api";
+import { prepressApi, ordersApi, ArtworkVerification, Order, StaffUser } from "@/services/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
+import { Pagination } from "@/components/ui/pagination";
+import { useToast } from "@/context/notification-context";
 
 export default function PrepressPage() {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Queries
@@ -41,14 +47,23 @@ export default function PrepressPage() {
   });
 
   const { data: ordersData } = useQuery({
-    queryKey: ["orders"],
-    queryFn: () => ordersApi.getOrders(),
+    queryKey: ["orders", "prepressSync"],
+    queryFn: () => ordersApi.getOrders({ page_size: 100 }),
+    refetchInterval: 6000,
   });
 
   const verifications: ArtworkVerification[] = verificationsData?.results || [];
   const [selectedVerificationId, setSelectedVerificationId] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
+
+  // Queue Pagination States
+  const [queuePage, setQueuePage] = useState(1);
+  const [queuePageSize, setQueuePageSize] = useState(8);
+
+  useEffect(() => {
+    setQueuePage(1);
+  }, [searchQuery, statusFilter]);
 
   // Custom Local File Upload State (for testing arbitrary real PDFs)
   const [customPdfBlobUrl, setCustomPdfBlobUrl] = useState<string | null>(null);
@@ -57,13 +72,58 @@ export default function PrepressPage() {
 
   // Viewer Type: Live PDF Embed vs Calibrated Proof Simulator
   const [viewerType, setViewerType] = useState<"live_pdf" | "calibrated_proof">("live_pdf");
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string>("");
 
-  // Set default selected verification
+  // Set default selected verification (supporting orderId in URL if passed from Orders page)
   useEffect(() => {
-    if (verifications.length > 0 && (!selectedVerificationId || !verifications.some((v) => v.id === selectedVerificationId))) {
-      setSelectedVerificationId(verifications[0].id);
+    if (verifications.length > 0) {
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        const targetOrderId = params.get("orderId");
+        if (targetOrderId) {
+          const match = verifications.find((v) => v.order === targetOrderId || v.order_number === targetOrderId);
+          if (match) {
+            setSelectedVerificationId(match.id);
+            return;
+          }
+        }
+      }
+      if (!selectedVerificationId || !verifications.some((v) => v.id === selectedVerificationId)) {
+        setSelectedVerificationId(verifications[0].id);
+      }
     }
   }, [verifications, selectedVerificationId]);
+
+  // Helper to determine unified approval status for any verification item
+  const getVerificationApprovalStatus = (
+    v: ArtworkVerification | null | undefined,
+    parentStatus?: string
+  ) => {
+    if (!v) return { isApproved: false, isFlagged: false, isPending: true };
+    const orderCode = (v.order_status || parentStatus || "").toUpperCase();
+    const isApproved =
+      v.verification_status === "APPROVED_FOR_PRINT" ||
+      [
+        "PREPRESS_PASSED",
+        "BATCHED",
+        "IN_PRODUCTION",
+        "PRINTING",
+        "QUALITY_AUDIT",
+        "PRODUCTION_COMPLETED",
+        "PACKED",
+        "READY_FOR_DISPATCH",
+        "DISPATCHED",
+        "IN_TRANSIT",
+        "OUT_FOR_DELIVERY",
+        "DELIVERED",
+      ].includes(orderCode);
+
+    const isFlagged =
+      v.verification_status === "FLAGGED_ERROR" ||
+      orderCode === "EXCEPTION_HOLD";
+
+    return { isApproved, isFlagged, isPending: !isApproved && !isFlagged };
+  };
 
   // Filtered verifications
   const filteredVerifications = useMemo(() => {
@@ -74,22 +134,127 @@ export default function PrepressPage() {
         v.product_type?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         v.paper_stock?.toLowerCase().includes(searchQuery.toLowerCase());
 
+      const { isApproved, isFlagged, isPending } = getVerificationApprovalStatus(v);
       const matchesStatus =
         statusFilter === "ALL" ||
-        (statusFilter === "PENDING" && (v.verification_status === "PENDING_REVIEW" || v.verification_status === "STREAMING_S3")) ||
-        (statusFilter === "APPROVED" && v.verification_status === "APPROVED_FOR_PRINT") ||
-        (statusFilter === "FLAGGED" && v.verification_status === "FLAGGED_ERROR");
+        (statusFilter === "PENDING" && isPending) ||
+        (statusFilter === "APPROVED" && isApproved) ||
+        (statusFilter === "FLAGGED" && isFlagged);
 
       return matchesSearch && matchesStatus;
     });
   }, [verifications, searchQuery, statusFilter]);
 
+  const paginatedVerifications = useMemo(() => {
+    const start = (queuePage - 1) * queuePageSize;
+    return filteredVerifications.slice(start, start + queuePageSize);
+  }, [filteredVerifications, queuePage, queuePageSize]);
+
   const activeVerification = verifications.find((v) => v.id === selectedVerificationId) || filteredVerifications[0] || verifications[0];
 
+  // Current user & admin role detection
+  const [currentUser, setCurrentUser] = useState<StaffUser | null>(null);
+  const [adminReevaluateUnlocked, setAdminReevaluateUnlocked] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("silverpoint_user");
+      if (stored) {
+        try {
+          setCurrentUser(JSON.parse(stored));
+        } catch (e) {}
+      }
+    }
+  }, []);
+
+  const isAdmin = useMemo(() => {
+    if (!currentUser) return false;
+    return Boolean(
+      currentUser.is_superuser ||
+      currentUser.is_staff ||
+      currentUser.role === "SUPER_ADMIN" ||
+      currentUser.role === "ADMIN" ||
+      currentUser.role_details?.code === "SUPER_ADMIN" ||
+      currentUser.role_details?.code === "ADMIN"
+    );
+  }, [currentUser]);
+
+  // Reset admin decision override whenever active verification changes
+  useEffect(() => {
+    setAdminReevaluateUnlocked(false);
+  }, [selectedVerificationId]);
+
+  // Parent Order & Decision State Detection
+  const parentOrder = useMemo(() => {
+    if (!activeVerification) return null;
+    return (
+      ordersData?.results?.find(
+        (o) => o.id === activeVerification.order || o.order_number === activeVerification.order_number
+      ) || null
+    );
+  }, [ordersData?.results, activeVerification]);
+
+  const parentStatusCode =
+    parentOrder?.status_details?.code?.toUpperCase() ||
+    (typeof parentOrder?.status === "string" ? parentOrder.status.toUpperCase() : "");
+
+  const activeApprovalStatus = useMemo(() => {
+    return getVerificationApprovalStatus(activeVerification, parentStatusCode);
+  }, [activeVerification, parentStatusCode]);
+
+  const isAlreadyApproved = activeApprovalStatus.isApproved;
+  const isAlreadyRejected = activeApprovalStatus.isFlagged;
+  const isPendingReview = activeApprovalStatus.isPending;
+
+  // Available documents for active verification (supporting multiple documents: Interior, Cover Wrap, etc.)
+  const availableDocuments = useMemo(() => {
+    if (!activeVerification) return [];
+    if (activeVerification.documents && activeVerification.documents.length > 0) {
+      return activeVerification.documents;
+    }
+    const docs = [];
+    const artUrl = activeVerification.file_url || "/artworks/peecho_hardcover_photobook_a4.pdf";
+    docs.push({
+      id: `${activeVerification.id}-interior`,
+      name: "Book Interior Pages (PDF)",
+      file_type: activeVerification.file_type || "CONTENT_INTERIOR",
+      file_url: artUrl,
+      page_count: activeVerification.page_count,
+      is_primary: true,
+    });
+    const covUrl = activeVerification.pdf_cover_url || "/artworks/peecho_hardcover_wrap_cover.pdf";
+    if (covUrl !== artUrl) {
+      docs.push({
+        id: `${activeVerification.id}-cover`,
+        name: "Book Cover Wrap (PDF)",
+        file_type: "COVER_WRAP",
+        file_url: covUrl,
+        page_count: 1,
+        is_primary: false,
+      });
+    }
+    return docs;
+  }, [activeVerification]);
+
+  // Auto-sync selectedDocumentId when available documents change
+  useEffect(() => {
+    if (availableDocuments.length > 0) {
+      if (!selectedDocumentId || !availableDocuments.some((d) => d.id === selectedDocumentId)) {
+        setSelectedDocumentId(availableDocuments[0].id);
+      }
+    } else {
+      setSelectedDocumentId("");
+    }
+  }, [availableDocuments, selectedDocumentId]);
+
+  const activeDocument = useMemo(() => {
+    return availableDocuments.find((d) => d.id === selectedDocumentId) || availableDocuments[0] || null;
+  }, [availableDocuments, selectedDocumentId]);
+
   // Counts for summary badges
-  const pendingCount = verifications.filter((v) => v.verification_status === "PENDING_REVIEW" || v.verification_status === "STREAMING_S3").length;
-  const approvedCount = verifications.filter((v) => v.verification_status === "APPROVED_FOR_PRINT").length;
-  const flaggedCount = verifications.filter((v) => v.verification_status === "FLAGGED_ERROR").length;
+  const pendingCount = verifications.filter((v) => getVerificationApprovalStatus(v).isPending).length;
+  const approvedCount = verifications.filter((v) => getVerificationApprovalStatus(v).isApproved).length;
+  const flaggedCount = verifications.filter((v) => getVerificationApprovalStatus(v).isFlagged).length;
 
   // PDF Previewer States
   const [currentPage, setCurrentPage] = useState(1);
@@ -112,26 +277,48 @@ export default function PrepressPage() {
       setCustomFileName(file.name);
       setCustomFileSize(file.size);
       setViewerType("live_pdf");
+      toast.info("Custom PDF Loaded", `Loaded "${file.name}" (${(file.size / (1024 * 1024)).toFixed(2)} MB) for inspection.`);
     }
   };
 
   // Mutations
   const approveMutation = useMutation({
-    mutationFn: (id: string) => prepressApi.approveArtwork(id),
+    mutationFn: ({ id, adminApproved }: { id: string; adminApproved?: boolean }) =>
+      prepressApi.approveArtwork(id, { admin_approved: adminApproved }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["prepress-verifications"] });
       queryClient.invalidateQueries({ queryKey: ["orders"] });
+      setAdminReevaluateUnlocked(false);
+      toast.success(
+        "Artwork Approved Successfully",
+        `Order ${activeVerification?.order_number || ""} verified and cleared for print imposition.`,
+        { orderNumber: activeVerification?.order_number }
+      );
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.detail || err?.response?.data?.error || "Failed to approve artwork";
+      toast.error("Artwork Approval Failed", msg, { orderNumber: activeVerification?.order_number });
     },
   });
 
   const flagErrorMutation = useMutation({
-    mutationFn: ({ id, reason, comment }: { id: string; reason: string; comment: string }) =>
-      prepressApi.flagPrepressError(id, `${reason} - ${comment}`.trim()),
+    mutationFn: ({ id, reason, comment, adminApproved }: { id: string; reason: string; comment: string; adminApproved?: boolean }) =>
+      prepressApi.flagPrepressError(id, `${reason} - ${comment}`.trim(), comment, adminApproved),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["prepress-verifications"] });
       queryClient.invalidateQueries({ queryKey: ["orders"] });
       setIsFlagErrorModalOpen(false);
       setFlagComment("");
+      setAdminReevaluateUnlocked(false);
+      toast.warning(
+        "Artwork Flagged & Rejected",
+        `Order ${activeVerification?.order_number || ""} rejected. Placed on prepress hold.`,
+        { orderNumber: activeVerification?.order_number }
+      );
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.detail || err?.response?.data?.error || "Failed to flag artwork error";
+      toast.error("Rejection Failed", msg, { orderNumber: activeVerification?.order_number });
     },
   });
 
@@ -140,11 +327,25 @@ export default function PrepressPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["prepress-verifications"] });
       queryClient.invalidateQueries({ queryKey: ["orders"] });
+      toast.success("Artwork Re-downloaded", "Synchronized latest production assets from API.");
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.detail || err?.response?.data?.error || "Failed to re-download artwork";
+      toast.error("Re-download Failed", msg);
     },
   });
 
-  const totalPages = activeVerification?.page_count || 48;
-  const currentLivePdfUrl = customPdfBlobUrl || activeVerification?.file_url || "https://assets.peecho.com/demo/sample_inner.pdf";
+  const totalPages = activeDocument?.page_count || activeVerification?.page_count || 24;
+  const currentLivePdfUrl =
+    customPdfBlobUrl ||
+    activeDocument?.file_url ||
+    activeVerification?.file_url ||
+    "/artworks/peecho_hardcover_photobook_a4.pdf";
+  const currentLivePdfName =
+    customFileName ||
+    activeDocument?.name ||
+    activeVerification?.product_type ||
+    "Artwork PDF";
 
   return (
     <div className="space-y-4">
@@ -258,6 +459,12 @@ export default function PrepressPage() {
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
+                name="prepress_search_input"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                data-lpignore="true"
                 placeholder="Search order number, book type, paper..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -294,10 +501,9 @@ export default function PrepressPage() {
             )}
 
             {filteredVerifications.length > 0 ? (
-              filteredVerifications.map((v) => {
+              paginatedVerifications.map((v) => {
                 const isSelected = v.id === activeVerification?.id && !customPdfBlobUrl;
-                const isApproved = v.verification_status === "APPROVED_FOR_PRINT";
-                const isFlagged = v.verification_status === "FLAGGED_ERROR";
+                const { isApproved, isFlagged } = getVerificationApprovalStatus(v);
 
                 return (
                   <div
@@ -355,6 +561,23 @@ export default function PrepressPage() {
               </div>
             )}
           </div>
+
+          {filteredVerifications.length > 0 && (
+            <Pagination
+              currentPage={queuePage}
+              totalPages={Math.ceil(filteredVerifications.length / queuePageSize) || 1}
+              totalCount={filteredVerifications.length}
+              pageSize={queuePageSize}
+              pageSizeOptions={[5, 8, 15, 25]}
+              onPageChange={setQueuePage}
+              onPageSizeChange={(sz) => {
+                setQueuePageSize(sz);
+                setQueuePage(1);
+              }}
+              showPageSizeSelector={false}
+              className="border-t border-slate-200"
+            />
+          )}
         </div>
 
         {/* COLUMN 2 & 3: ACTIVE INSPECTION CANVAS & CONTROLS (8 Cols) */}
@@ -363,6 +586,44 @@ export default function PrepressPage() {
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
               {/* PDF PROOF PREVIEWER & CANVAS (7 Cols) */}
               <div className="xl:col-span-7 flex flex-col bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden min-h-[580px]">
+                {/* Multi-Document Selector Tabs */}
+                {availableDocuments.length > 1 && (
+                  <div className="px-3.5 py-2 bg-slate-100/90 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1 shrink-0">
+                        <Layers className="w-3.5 h-3.5 text-[#0073EA]" />
+                        <span>Documents ({availableDocuments.length}):</span>
+                      </span>
+                      {availableDocuments.map((doc) => {
+                        const isSelected = activeDocument?.id === doc.id;
+                        return (
+                          <button
+                            key={doc.id}
+                            onClick={() => setSelectedDocumentId(doc.id)}
+                            className={`px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                              isSelected
+                                ? "bg-[#0073EA] text-white shadow-xs"
+                                : "bg-white text-slate-700 hover:bg-slate-50 border border-slate-200"
+                            }`}
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            <span>{doc.name}</span>
+                            {doc.page_count ? (
+                              <span
+                                className={`text-[10px] px-1 rounded font-mono ${
+                                  isSelected ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"
+                                }`}
+                              >
+                                {doc.page_count}p
+                              </span>
+                            ) : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Viewer Toolbar */}
                 <div className="px-3.5 py-2.5 bg-slate-50/80 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
                   {/* Mode Toggle: PDF View vs Print Preview */}
@@ -391,7 +652,7 @@ export default function PrepressPage() {
                     </button>
                   </div>
 
-                  {/* Overlays & External Open */}
+                  {/* Overlays, Zoom & External Open */}
                   <div className="flex items-center gap-1.5">
                     <button
                       onClick={() => setShowBleedBox(!showBleedBox)}
@@ -417,6 +678,32 @@ export default function PrepressPage() {
                       Cut Guide
                     </button>
 
+                    {viewerType === "calibrated_proof" && (
+                      <div className="flex items-center gap-1 bg-white border border-slate-200 rounded px-1.5 py-0.5 text-[10px] font-mono">
+                        <button
+                          onClick={() => setZoomLevel((z) => Math.max(50, z - 10))}
+                          className="hover:text-blue-600 font-bold px-0.5"
+                          title="Zoom Out"
+                        >
+                          -
+                        </button>
+                        <span className="text-slate-700">{zoomLevel}%</span>
+                        <button
+                          onClick={() => setZoomLevel((z) => Math.min(150, z + 10))}
+                          className="hover:text-blue-600 font-bold px-0.5"
+                          title="Zoom In"
+                        >
+                          +
+                        </button>
+                        <button
+                          onClick={() => setZoomLevel(100)}
+                          className="hover:text-blue-600 ml-0.5 text-[9px] text-slate-400"
+                        >
+                          Reset
+                        </button>
+                      </div>
+                    )}
+
                     {/* Open Original in New Window */}
                     <a
                       href={currentLivePdfUrl}
@@ -432,7 +719,7 @@ export default function PrepressPage() {
 
                 {/* PDF Content Area */}
                 {viewerType === "live_pdf" ? (
-                  <div className="flex-1 bg-slate-900/5 p-3 flex flex-col relative min-h-[500px]">
+                  <div className="flex-1 bg-slate-900/5 p-3 flex flex-col relative min-h-[520px]">
                     {/* Bleed & Trim Guides Overlaid Over Embedded PDF */}
                     <div className="relative flex-1 rounded-lg overflow-hidden border border-slate-300 shadow-inner bg-slate-800 flex flex-col">
                       {showBleedBox && (
@@ -452,84 +739,92 @@ export default function PrepressPage() {
 
                       {/* Native Embedded PDF Document Viewer */}
                       <iframe
+                        key={`live-${currentLivePdfUrl}`}
                         src={`${currentLivePdfUrl}#toolbar=1&navpanes=1&scrollbar=1`}
-                        className="w-full h-full min-h-[500px] border-0 bg-white"
+                        className="w-full h-full min-h-[520px] border-0 bg-white"
                         title="Customer Artwork PDF"
                       />
                     </div>
 
                     <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500 px-1">
                       <span className="flex items-center gap-1 font-mono">
-                        <FileText className="w-3.5 h-3.5 text-slate-400" />
-                        {customFileName || activeVerification.file_url.split("/").pop() || "artwork.pdf"}
+                        <FileText className="w-3.5 h-3.5 text-[#0073EA]" />
+                        {currentLivePdfName}
                       </span>
                       <span className="font-mono text-slate-400">
-                        Artwork File
+                        {activeVerification.peecho_order_id || activeVerification.order_number} • Interactive PDF Mode
                       </span>
                     </div>
                   </div>
                 ) : (
-                  /* Calibrated Proof View Mode */
-                  <div className="flex-1 bg-slate-100/70 p-6 flex items-center justify-center overflow-auto relative min-h-[500px]">
+                  /* Calibrated Proof View Mode with Real Document */
+                  <div className="flex-1 bg-slate-900/95 p-6 flex flex-col items-center justify-center overflow-auto relative min-h-[520px]">
+                    {/* Studio Proof Top Calibration Header */}
+                    <div className="w-full max-w-xl flex items-center justify-between text-[11px] text-slate-400 font-mono mb-2 px-1">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-amber-300 text-[10px] font-semibold flex items-center gap-1">
+                          <Sparkles className="w-3 h-3 text-amber-400" />
+                          FOGRA39 CMYK PROOF
+                        </span>
+                        <span className="text-slate-300 truncate max-w-[220px]">
+                          {currentLivePdfName}
+                        </span>
+                      </div>
+
+                      {/* Calibration Color Bar */}
+                      <div className="flex items-center gap-1 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
+                        <span className="text-[9px] text-slate-400 mr-1">STRIP:</span>
+                        <div className="w-3 h-3 bg-cyan-500 rounded-xs shadow" title="Cyan (100%)" />
+                        <div className="w-3 h-3 bg-pink-500 rounded-xs shadow" title="Magenta (100%)" />
+                        <div className="w-3 h-3 bg-yellow-400 rounded-xs shadow" title="Yellow (100%)" />
+                        <div className="w-3 h-3 bg-black rounded-xs shadow border border-slate-600" title="Key/Black (100%)" />
+                      </div>
+                    </div>
+
+                    {/* Real Document Press Proof Frame */}
                     <div
                       style={{
                         transform: `scale(${zoomLevel / 100})`,
                         transformOrigin: "center center",
                         transition: "transform 0.15s ease-out",
                       }}
-                      className="w-[360px] h-[480px] bg-white rounded-md shadow-2xl relative border border-slate-300 select-none flex flex-col justify-between overflow-hidden"
+                      className="w-[440px] h-[580px] bg-white rounded shadow-2xl relative border-4 border-slate-300 select-none flex flex-col overflow-hidden"
                     >
+                      {/* Corner Registration Targets */}
+                      <div className="absolute top-1.5 left-1.5 w-3.5 h-3.5 border-t-2 border-l-2 border-slate-900 z-30 pointer-events-none" />
+                      <div className="absolute top-1.5 right-1.5 w-3.5 h-3.5 border-t-2 border-r-2 border-slate-900 z-30 pointer-events-none" />
+                      <div className="absolute bottom-1.5 left-1.5 w-3.5 h-3.5 border-b-2 border-l-2 border-slate-900 z-30 pointer-events-none" />
+                      <div className="absolute bottom-1.5 right-1.5 w-3.5 h-3.5 border-b-2 border-r-2 border-slate-900 z-30 pointer-events-none" />
+
                       {showBleedBox && (
-                        <div className="absolute inset-1 border border-dashed border-rose-500/80 pointer-events-none z-20">
-                          <span className="absolute top-1 left-1 bg-rose-500 text-white text-[8px] font-mono px-1 rounded">
-                            Bleed Margin
+                        <div className="absolute inset-1.5 border-2 border-dashed border-rose-500 pointer-events-none z-30">
+                          <span className="absolute top-1 left-1 bg-rose-500 text-white text-[8px] font-mono px-1 rounded shadow">
+                            Bleed Box (3mm)
                           </span>
                         </div>
                       )}
 
                       {showTrimBox && (
-                        <div className="absolute inset-3 border border-sky-500 pointer-events-none z-20">
-                          <span className="absolute bottom-1 right-1 bg-sky-500 text-white text-[8px] font-mono px-1 rounded">
-                            Cut Line
+                        <div className="absolute inset-4 border border-sky-400 pointer-events-none z-30">
+                          <span className="absolute bottom-1 right-1 bg-sky-500 text-white text-[8px] font-mono px-1 rounded shadow">
+                            Cut Trim Line
                           </span>
                         </div>
                       )}
 
-                      <div className="p-6 flex-1 flex flex-col justify-between relative z-10">
-                        <div className="border-b border-slate-100 pb-3">
-                          <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
-                            <span className="truncate max-w-[180px]">{activeVerification.product_type}</span>
-                            <span>SPREAD {currentPage}</span>
-                          </div>
-                          <h2 className="text-base font-bold text-slate-900 mt-1.5 tracking-tight">
-                            Print Proof Preview
-                          </h2>
-                          <p className="text-[11px] text-slate-500 mt-0.5">
-                            {activeVerification.peecho_order_id} • Spread {currentPage} of {totalPages}
-                          </p>
-                        </div>
+                      {/* The EXACT SAME DOCUMENT in Print Preview Mode */}
+                      <iframe
+                        key={`proof-${currentLivePdfUrl}`}
+                        src={`${currentLivePdfUrl}#toolbar=0&navpanes=0&scrollbar=0`}
+                        className="w-full h-full border-0 bg-white"
+                        title={`Print Proof: ${currentLivePdfName}`}
+                      />
+                    </div>
 
-                        <div className="my-auto py-4">
-                          <div className="space-y-3">
-                            <div className="h-32 bg-gradient-to-tr from-slate-900 via-blue-900 to-slate-800 rounded-lg shadow-inner flex items-center justify-center text-white text-center p-3">
-                              <div>
-                                <Sparkles className="w-6 h-6 text-amber-300 mx-auto mb-1" />
-                                <p className="font-semibold text-xs">CMYK Print Ready</p>
-                                <p className="text-[9px] text-slate-300 font-mono">FOGRA39 Standard</p>
-                              </div>
-                            </div>
-                            <p className="text-[11px] text-slate-500 leading-relaxed text-justify">
-                              Color proof verified for standard print profile (CMYK Fogra39).
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between text-[9px] text-slate-400 font-mono border-t border-slate-100 pt-2">
-                          <span>VERIFIED</span>
-                          <span>{currentPage}</span>
-                          <span>300 DPI CMYK</span>
-                        </div>
-                      </div>
+                    {/* Studio Proof Footer */}
+                    <div className="w-full max-w-xl flex items-center justify-between text-[10px] text-slate-400 font-mono mt-3 px-1">
+                      <span>PRESS: HP INDIGO 12000 (FOGRA39)</span>
+                      <span>{activeVerification.peecho_order_id} • 300 DPI CMYK VERIFIED</span>
                     </div>
                   </div>
                 )}
@@ -642,29 +937,221 @@ export default function PrepressPage() {
                 {/* Operator Decision Action Controls */}
                 <Card
                   title="Approval Actions"
-                  subtitle="Approve for printing or reject with notes."
+                  subtitle={
+                    isAlreadyApproved
+                      ? "Artwork decision finalized: Approved for print production."
+                      : isAlreadyRejected
+                      ? "Artwork decision finalized: Rejected & placed on exception hold."
+                      : "Inspect and approve for printing or reject with notes."
+                  }
                 >
-                  <div className="space-y-2.5">
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <Button
-                        variant="primary"
-                        className="w-full bg-[#0073EA] hover:bg-[#0060B9] text-white shadow-xs text-xs font-semibold"
-                        isLoading={approveMutation.isPending}
-                        onClick={() => approveMutation.mutate(activeVerification.id)}
-                        leftIcon={<CheckCircle2 className="w-4 h-4" />}
-                      >
-                        Approve for Printing
-                      </Button>
+                  <div className="space-y-3">
+                    {/* CASE 1: ALREADY APPROVED */}
+                    {isAlreadyApproved && (
+                      <div className="space-y-2.5">
+                        <div className="p-3 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-950 space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-xs flex items-center gap-1.5 text-emerald-800">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                              Artwork Approved for Print
+                            </span>
+                            <Badge variant="success" size="sm">Approved</Badge>
+                          </div>
+                          <p className="text-[11px] text-emerald-800 leading-relaxed">
+                            This artwork has already been approved and passed preflight verification. The order is progressing in the production pipeline.
+                          </p>
+                          <div className="pt-1.5 border-t border-emerald-200/70 text-[10px] text-emerald-700 flex flex-wrap items-center justify-between gap-1">
+                            <span>Verified by: <strong>{activeVerification.verified_by_name || "Prepress Operator"}</strong></span>
+                            {activeVerification.verified_at && (
+                              <span>{new Date(activeVerification.verified_at).toLocaleDateString()} {new Date(activeVerification.verified_at).toLocaleTimeString()}</span>
+                            )}
+                          </div>
+                        </div>
 
-                      <Button
-                        variant="danger"
-                        className="w-full text-xs font-semibold"
-                        onClick={() => setIsFlagErrorModalOpen(true)}
-                        leftIcon={<AlertTriangle className="w-4 h-4" />}
-                      >
-                        Reject Artwork
-                      </Button>
-                    </div>
+                        {/* When approved, decision buttons are locked and clearly labeled */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button
+                            disabled={true}
+                            className="w-full bg-emerald-100/90 text-emerald-800 border border-emerald-300 font-semibold text-xs cursor-default shadow-none"
+                            leftIcon={<CheckCircle2 className="w-4 h-4 text-emerald-600" />}
+                          >
+                            Already Approved ✓
+                          </Button>
+
+                          <Button
+                            disabled={!adminReevaluateUnlocked}
+                            variant="outline"
+                            className={`w-full text-xs font-semibold ${
+                              adminReevaluateUnlocked
+                                ? "border-rose-300 text-rose-700 hover:bg-rose-50"
+                                : "text-slate-400 border-slate-200 cursor-not-allowed bg-slate-50"
+                            }`}
+                            onClick={() => {
+                              if (adminReevaluateUnlocked) {
+                                setIsFlagErrorModalOpen(true);
+                              }
+                            }}
+                            leftIcon={adminReevaluateUnlocked ? <AlertTriangle className="w-4 h-4" /> : <Lock className="w-3.5 h-3.5 text-slate-400" />}
+                          >
+                            {adminReevaluateUnlocked ? "Reject & Hold" : "Rejection Locked"}
+                          </Button>
+                        </div>
+
+                        {/* Admin Re-evaluation Toggle */}
+                        {isAdmin && (
+                          <div className="pt-1">
+                            {!adminReevaluateUnlocked ? (
+                              <button
+                                type="button"
+                                onClick={() => setAdminReevaluateUnlocked(true)}
+                                className="w-full text-center text-[11px] font-semibold text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100 py-1.5 px-2 rounded-lg border border-purple-200 flex items-center justify-center gap-1.5 transition-colors"
+                              >
+                                <ShieldAlert className="w-3.5 h-3.5 text-purple-600" />
+                                <span>Unlock Admin Decision Override</span>
+                              </button>
+                            ) : (
+                              <div className="p-2.5 rounded-lg border border-purple-200 bg-purple-50/70 space-y-2 text-xs animate-in fade-in">
+                                <div className="flex items-center justify-between text-purple-900 font-bold">
+                                  <span className="flex items-center gap-1">
+                                    <ShieldCheck className="w-3.5 h-3.5 text-purple-600" />
+                                    Admin Override Mode Unlocked
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setAdminReevaluateUnlocked(false)}
+                                    className="text-slate-400 hover:text-slate-600 text-[11px] font-medium underline"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                                <p className="text-[11px] text-purple-800">
+                                  As an Administrator, you may reverse this approval and flag an error if defects were discovered post-approval.
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* CASE 2: ALREADY REJECTED / FLAGGED */}
+                    {isAlreadyRejected && (
+                      <div className="space-y-2.5">
+                        <div className="p-3 rounded-xl border border-rose-300 bg-rose-50 text-rose-950 space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-xs flex items-center gap-1.5 text-rose-800">
+                              <AlertTriangle className="w-4 h-4 text-rose-600" />
+                              Artwork Rejected & On Hold
+                            </span>
+                            <Badge variant="danger" size="sm">Flagged Error</Badge>
+                          </div>
+                          <p className="text-[11px] text-rose-800 leading-relaxed">
+                            This artwork was flagged with errors and placed on exception hold. Press production is halted.
+                          </p>
+                          {activeVerification.error_reason && (
+                            <div className="p-2 bg-white/90 rounded-lg border border-rose-200 text-[11px] text-rose-900">
+                              <span className="font-bold block text-rose-800">Recorded Reason:</span>
+                              <span className="mt-0.5 block">{activeVerification.error_reason}</span>
+                            </div>
+                          )}
+                          <div className="pt-1.5 border-t border-rose-200/70 text-[10px] text-rose-700 flex flex-wrap items-center justify-between gap-1">
+                            <span>Flagged by: <strong>{activeVerification.verified_by_name || "Prepress Operator"}</strong></span>
+                            {activeVerification.verified_at && (
+                              <span>{new Date(activeVerification.verified_at).toLocaleDateString()} {new Date(activeVerification.verified_at).toLocaleTimeString()}</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* When rejected, decision buttons are locked and clearly labeled */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button
+                            disabled={!adminReevaluateUnlocked}
+                            variant="primary"
+                            className={`w-full text-xs font-semibold ${
+                              adminReevaluateUnlocked
+                                ? "bg-[#0073EA] hover:bg-[#0060B9] text-white"
+                                : "text-slate-400 border-slate-200 cursor-not-allowed bg-slate-50 border"
+                            }`}
+                            isLoading={approveMutation.isPending}
+                            onClick={() => {
+                              if (adminReevaluateUnlocked) {
+                                approveMutation.mutate({ id: activeVerification.id, adminApproved: true });
+                              }
+                            }}
+                            leftIcon={adminReevaluateUnlocked ? <CheckCircle2 className="w-4 h-4" /> : <Lock className="w-3.5 h-3.5 text-slate-400" />}
+                          >
+                            {adminReevaluateUnlocked ? "Clear Hold & Approve" : "Approval Locked"}
+                          </Button>
+
+                          <Button
+                            disabled={true}
+                            className="w-full bg-rose-100/90 text-rose-800 border border-rose-300 font-semibold text-xs cursor-default shadow-none"
+                            leftIcon={<AlertTriangle className="w-4 h-4 text-rose-600" />}
+                          >
+                            Already Rejected ✕
+                          </Button>
+                        </div>
+
+                        {/* Admin Re-evaluation Toggle */}
+                        {isAdmin && (
+                          <div className="pt-1">
+                            {!adminReevaluateUnlocked ? (
+                              <button
+                                type="button"
+                                onClick={() => setAdminReevaluateUnlocked(true)}
+                                className="w-full text-center text-[11px] font-semibold text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100 py-1.5 px-2 rounded-lg border border-purple-200 flex items-center justify-center gap-1.5 transition-colors"
+                              >
+                                <ShieldAlert className="w-3.5 h-3.5 text-purple-600" />
+                                <span>Unlock Admin Decision Override</span>
+                              </button>
+                            ) : (
+                              <div className="p-2.5 rounded-lg border border-purple-200 bg-purple-50/70 space-y-2 text-xs animate-in fade-in">
+                                <div className="flex items-center justify-between text-purple-900 font-bold">
+                                  <span className="flex items-center gap-1">
+                                    <ShieldCheck className="w-3.5 h-3.5 text-purple-600" />
+                                    Admin Re-evaluation Mode Unlocked
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setAdminReevaluateUnlocked(false)}
+                                    className="text-slate-400 hover:text-slate-600 text-[11px] font-medium underline"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                                <p className="text-[11px] text-purple-800">
+                                  If the artwork defect has been rectified or approved under exception by the admin, click "Clear Hold & Approve".
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* CASE 3: PENDING REVIEW (Active decision buttons) */}
+                    {isPendingReview && (
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <Button
+                          variant="primary"
+                          className="w-full bg-[#0073EA] hover:bg-[#0060B9] text-white shadow-xs text-xs font-semibold"
+                          isLoading={approveMutation.isPending}
+                          onClick={() => approveMutation.mutate({ id: activeVerification.id })}
+                          leftIcon={<CheckCircle2 className="w-4 h-4" />}
+                        >
+                          Approve for Printing
+                        </Button>
+
+                        <Button
+                          variant="danger"
+                          className="w-full text-xs font-semibold"
+                          onClick={() => setIsFlagErrorModalOpen(true)}
+                          leftIcon={<AlertTriangle className="w-4 h-4" />}
+                        >
+                          Reject Artwork
+                        </Button>
+                      </div>
+                    )}
 
                     {/* Direct Workstation File Download for Offline Inspection */}
                     <a
@@ -724,6 +1211,7 @@ export default function PrepressPage() {
                   id: activeVerification.id,
                   reason: flagReasonType,
                   comment: flagComment,
+                  adminApproved: adminReevaluateUnlocked,
                 })
               }
             >

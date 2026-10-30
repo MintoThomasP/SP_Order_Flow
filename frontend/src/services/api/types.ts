@@ -71,6 +71,7 @@ export interface OrderItem extends BaseModel {
   paper_stock: string;
   pdf_artwork_url: string;
   pdf_cover_url: string;
+  documents?: ArtworkDocument[];
   preflight_passed: boolean;
   metadata: Record<string, any>;
 }
@@ -104,18 +105,42 @@ export interface Order extends BaseModel {
   external_pod_order_id?: string | null;
   tracking_number?: string;
   peecho_metadata: Record<string, any>;
+  batch_info?: {
+    id: string;
+    batch_number: string;
+    target_press: string;
+    press_label: string;
+    paper_stock?: string;
+    status_code: string | null;
+    status_name: string | null;
+    created_at: string;
+  } | null;
   items: OrderItem[];
+}
+
+export interface ArtworkDocument {
+  id: string;
+  name: string;
+  file_type: "CONTENT_INTERIOR" | "COVER_WRAP" | "DUST_JACKET" | "SINGLE_SHEET" | string;
+  file_url: string;
+  page_count?: number;
+  is_primary?: boolean;
 }
 
 export interface ArtworkVerification extends BaseModel {
   order: string;
   order_number: string;
   peecho_order_id: string;
+  order_status?: string;
+  order_status_name?: string;
   order_item: string;
   product_type: string;
   paper_stock: string;
   file_type: "CONTENT_INTERIOR" | "COVER_WRAP" | "DUST_JACKET" | "SINGLE_SHEET" | string;
   file_url: string;
+  pdf_artwork_url?: string;
+  pdf_cover_url?: string;
+  documents?: ArtworkDocument[];
   s3_bucket: string;
   s3_key: string;
   file_size_bytes: number;
@@ -142,6 +167,7 @@ export interface ProductionBatch extends BaseModel {
   target_press: string;
   press_label: string;
   status: string;
+  status_code?: string;
   status_details: EntityStatus | null;
   total_orders_count: number;
   total_items_count: number;
@@ -154,6 +180,25 @@ export interface ProductionBatch extends BaseModel {
   completed_at: string | null;
   notes: string;
   orders: Order[];
+}
+
+export interface PrintMachine extends BaseModel {
+  code: string;
+  name: string;
+  description: string;
+  sheet_format: string;
+  max_speed_cph: number;
+  is_active: boolean;
+}
+
+export interface BindingMethod extends BaseModel {
+  code: string;
+  name: string;
+  description: string;
+  min_pages: number;
+  max_pages: number;
+  default_caliper_mm: string | number;
+  is_active: boolean;
 }
 
 export interface ShopfloorStation extends BaseModel {
@@ -219,6 +264,9 @@ export interface AuthTokens {
 
 export interface PaginatedResponse<T> {
   count: number;
+  total_pages?: number;
+  current_page?: number;
+  page_size?: number;
   next: string | null;
   previous: string | null;
   results: T[];

@@ -1,4 +1,4 @@
-import React from "react";
+import { Pagination, PaginationProps } from "./pagination";
 
 export interface Column<T> {
   header: string;
@@ -15,6 +15,7 @@ export interface TableProps<T> {
   isLoading?: boolean;
   emptyMessage?: string;
   onRowClick?: (item: T) => void;
+  pagination?: PaginationProps;
 }
 
 export function Table<T>({
@@ -24,6 +25,7 @@ export function Table<T>({
   isLoading = false,
   emptyMessage = "No records found.",
   onRowClick,
+  pagination,
 }: TableProps<T>) {
   return (
     <div className="w-full overflow-x-auto rounded-xl border border-slate-200/80 bg-white">
@@ -79,6 +81,7 @@ export function Table<T>({
           )}
         </tbody>
       </table>
+      {pagination && <Pagination {...pagination} />}
     </div>
   );
 }
