@@ -107,23 +107,48 @@ class OrderSerializer(serializers.ModelSerializer):
 
     def get_time_remaining_minutes(self, obj):
         from django.utils import timezone
-        diff = obj.sla_deadline - timezone.now()
-        return int(diff.total_seconds() / 60)
+        if not obj.sla_deadline:
+            return 0
+        try:
+            diff = obj.sla_deadline - timezone.now()
+            return int(diff.total_seconds() / 60)
+        except Exception:
+            return 0
 
     def get_batch_info(self, obj):
-        batch = obj.production_batches.order_by("-created_at").first()
-        if not batch:
+        try:
+            batch = obj.production_batches.order_by("-created_at").first()
+            if not batch:
+                return None
+            
+            press_display = batch.target_press
+            if hasattr(batch, "get_target_press_display"):
+                try:
+                    press_display = batch.get_target_press_display()
+                except Exception:
+                    press_display = batch.target_press
+
+            status_code = None
+            status_name = None
+            if batch.status_id:
+                try:
+                    status_code = batch.status.code if batch.status else None
+                    status_name = batch.status.name if batch.status else None
+                except Exception:
+                    pass
+
+            return {
+                "id": str(batch.id),
+                "batch_number": batch.batch_number,
+                "target_press": batch.target_press,
+                "press_label": press_display,
+                "paper_stock": batch.paper_stock,
+                "status_code": status_code,
+                "status_name": status_name,
+                "created_at": batch.created_at,
+            }
+        except Exception:
             return None
-        return {
-            "id": str(batch.id),
-            "batch_number": batch.batch_number,
-            "target_press": batch.target_press,
-            "press_label": batch.get_target_press_display(),
-            "paper_stock": batch.paper_stock,
-            "status_code": batch.status.code if batch.status else None,
-            "status_name": batch.status.name if batch.status else None,
-            "created_at": batch.created_at,
-        }
 
 
 class OrderStatusUpdateSerializer(serializers.Serializer):
