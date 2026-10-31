@@ -265,6 +265,17 @@ export default function OrdersPage() {
     }
   }, [currentUser, isAdmin, isStationScopeInitialized]);
 
+  // Sync URL search query into searchQuery state
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const urlQuery = params.get("search") || params.get("q");
+      if (urlQuery && urlQuery.trim()) {
+        setSearchQuery(urlQuery.trim());
+      }
+    }
+  }, []);
+
   // Visual auto-sync feedback alert inside modal
   const [syncAlert, setSyncAlert] = useState<{
     type: "success" | "error";

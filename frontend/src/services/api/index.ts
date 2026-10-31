@@ -9,3 +9,4 @@ export * from "./shopfloor";
 export * from "./dispatch";
 export * from "./finance";
 export * from "./analytics";
+export * from "./search";

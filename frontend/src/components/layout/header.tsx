@@ -27,9 +27,11 @@ import {
   Volume2,
   VolumeX,
   Radio,
+  Compass,
+  ArrowRight,
 } from "lucide-react";
 import { NAVIGATION_ITEMS } from "./navigation-config";
-import { authApi } from "@/services/api";
+import { authApi, searchApi, GlobalSearchResponse } from "@/services/api";
 import { useNotifications, AppNotification } from "@/context/notification-context";
 import { useLiveEvents } from "@/context/live-events-context";
 
@@ -43,6 +45,14 @@ export const Header: React.FC = () => {
 
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Global Unified Search State
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<GlobalSearchResponse | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   const {
     notifications,
@@ -81,10 +91,91 @@ export const Header: React.FC = () => {
       if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
         setIsProfileMenuOpen(false);
       }
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+        setIsSearchOpen(false);
+      }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Close search on path change
+  useEffect(() => {
+    setIsSearchOpen(false);
+  }, [pathname]);
+
+  // Global keyboard shortcut '/' to focus search
+  useEffect(() => {
+    const handleGlobalSlash = (e: KeyboardEvent) => {
+      if (
+        e.key === "/" &&
+        document.activeElement?.tagName !== "INPUT" &&
+        document.activeElement?.tagName !== "TEXTAREA"
+      ) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", handleGlobalSlash);
+    return () => window.removeEventListener("keydown", handleGlobalSlash);
+  }, []);
+
+  // Debounced live search
+  useEffect(() => {
+    if (!searchQuery || searchQuery.trim().length === 0) {
+      setSearchResults(null);
+      setIsSearching(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const data = await searchApi.globalSearch(searchQuery.trim(), 4);
+        setSearchResults(data);
+        setIsSearchOpen(true);
+      } catch (err) {
+        console.error("Global search error:", err);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 220);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && searchQuery.trim()) {
+      setIsSearchOpen(false);
+      router.push(`/orders?search=${encodeURIComponent(searchQuery.trim())}`);
+    } else if (e.key === "Escape") {
+      setIsSearchOpen(false);
+    }
+  };
+
+  const handleResultClick = (link: string) => {
+    setIsSearchOpen(false);
+    setSearchQuery("");
+    router.push(link);
+  };
+
+  const getStatusBadgeClass = (code?: string) => {
+    switch (code) {
+      case "PREPRESS_PASSED":
+      case "IN_PRODUCTION":
+      case "PRINTED":
+      case "DELIVERED":
+        return "bg-emerald-50 text-emerald-700 border-emerald-200";
+      case "PREPRESS_REJECTED":
+      case "DAMAGE_REPRINT":
+        return "bg-rose-50 text-rose-700 border-rose-200";
+      case "FILE_UPLOADED":
+      case "IN_PREPRESS":
+        return "bg-amber-50 text-amber-700 border-amber-200";
+      default:
+        return "bg-blue-50 text-blue-700 border-blue-200";
+    }
+  };
 
   const currentNav = NAVIGATION_ITEMS.find(
     (item) => item.path === pathname || pathname.startsWith(`${item.path}/`)
@@ -136,20 +227,280 @@ export const Header: React.FC = () => {
         </span>
       </div>
 
-      {/* Center Search Pill */}
-      <div className="relative hidden md:block w-80 max-w-sm">
-        <Search className="w-3.5 h-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-        <input
-          type="text"
-          name="global_nav_search"
-          autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="off"
-          spellCheck={false}
-          data-lpignore="true"
-          placeholder="Search orders, staff, shipments..."
-          className="w-full bg-[#F4F5F7] border border-[#E5E7EB] rounded-full pl-9 pr-4 py-1.5 text-xs text-[#1E2229] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#0073EA]/20 focus:border-[#0073EA] focus:bg-white transition-all"
-        />
+      {/* Center Global Search Pill & Dropdown */}
+      <div className="relative hidden md:block w-80 lg:w-96" ref={searchContainerRef}>
+        <div className="relative flex items-center">
+          <Search className="w-3.5 h-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <input
+            ref={searchInputRef}
+            type="text"
+            name="global_nav_search"
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setIsSearchOpen(true);
+            }}
+            onFocus={() => {
+              if (searchQuery.trim().length > 0) {
+                setIsSearchOpen(true);
+              }
+            }}
+            onKeyDown={handleSearchKeyDown}
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            data-lpignore="true"
+            placeholder="Search orders, staff, shipments... (↵ Enter)"
+            className="w-full bg-[#F4F5F7] hover:bg-slate-100/90 focus:bg-white border border-[#E5E7EB] focus:border-[#0073EA] rounded-full pl-9 pr-8 py-1.5 text-xs text-[#1E2229] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#0073EA]/20 transition-all shadow-2xs"
+          />
+          {isSearching ? (
+            <RefreshCw className="w-3 h-3 absolute right-3 top-1/2 -translate-y-1/2 text-[#0073EA] animate-spin pointer-events-none" />
+          ) : searchQuery ? (
+            <button
+              onClick={() => {
+                setSearchQuery("");
+                setSearchResults(null);
+                setIsSearchOpen(false);
+                searchInputRef.current?.focus();
+              }}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-slate-200 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+              title="Clear search"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          ) : (
+            <kbd className="hidden lg:inline-block absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-mono text-slate-400 border border-slate-200 bg-white px-1.5 py-0.5 rounded shadow-2xs pointer-events-none">
+              /
+            </kbd>
+          )}
+        </div>
+
+        {/* Global Search Results Dropdown */}
+        {isSearchOpen && searchQuery.trim().length > 0 && (
+          <div className="absolute left-0 mt-2 w-[380px] lg:w-[480px] bg-white border border-slate-200/90 rounded-2xl shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col max-h-[75vh]">
+            {/* Header / Query Summary */}
+            <div className="px-3.5 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+              <span className="font-medium text-slate-700">
+                {isSearching ? (
+                  <span className="flex items-center gap-1.5 text-[#0073EA]">
+                    <RefreshCw className="w-3 h-3 animate-spin" />
+                    Searching across modules...
+                  </span>
+                ) : (
+                  <span>
+                    Results for <strong className="text-slate-900">&ldquo;{searchQuery}&rdquo;</strong> ({searchResults?.total || 0})
+                  </span>
+                )}
+              </span>
+              <span className="text-[10px] text-slate-400">Press ↵ to view in Orders</span>
+            </div>
+
+            <div className="overflow-y-auto divide-y divide-slate-100 flex-1">
+              {/* Quick Navigation Matches */}
+              {searchResults?.navigation && searchResults.navigation.length > 0 && (
+                <div className="p-2 bg-blue-50/40">
+                  <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[#0073EA] flex items-center gap-1">
+                    <Compass className="w-3 h-3" />
+                    Quick Navigation
+                  </div>
+                  <div className="space-y-0.5">
+                    {searchResults.navigation.map((nav, i) => (
+                      <button
+                        key={i}
+                        onClick={() => handleResultClick(nav.link)}
+                        className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-white hover:shadow-2xs text-xs font-semibold text-slate-800 flex items-center justify-between transition-all group cursor-pointer"
+                      >
+                        <span>{nav.name}</span>
+                        <ArrowRight className="w-3.5 h-3.5 text-[#0073EA] opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Orders Section */}
+              {searchResults?.orders && searchResults.orders.length > 0 && (
+                <div className="p-2">
+                  <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
+                    <span>POD Orders ({searchResults.orders.length})</span>
+                    <button
+                      onClick={() => handleResultClick(`/orders?search=${encodeURIComponent(searchQuery)}`)}
+                      className="text-[#0073EA] hover:underline normal-case font-medium text-[10.5px] cursor-pointer"
+                    >
+                      View in Orders &rarr;
+                    </button>
+                  </div>
+                  <div className="space-y-1">
+                    {searchResults.orders.map((ord) => (
+                      <button
+                        key={ord.id}
+                        onClick={() => handleResultClick(ord.link)}
+                        className="w-full text-left p-2 rounded-xl hover:bg-slate-50 transition-colors flex items-center justify-between group cursor-pointer"
+                      >
+                        <div className="min-w-0 pr-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-slate-900 group-hover:text-[#0073EA] transition-colors">
+                              {ord.order_number}
+                            </span>
+                            <span
+                              className={`text-[9.5px] px-1.5 py-0.5 rounded-full font-semibold border ${getStatusBadgeClass(
+                                ord.status_code
+                              )}`}
+                            >
+                              {ord.status_name}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                            {ord.customer_name} {ord.customer_email && `• ${ord.customer_email}`}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className="text-xs font-bold text-slate-800">
+                            ${ord.total_amount.toFixed(2)}
+                          </span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Shipments Section */}
+              {searchResults?.shipments && searchResults.shipments.length > 0 && (
+                <div className="p-2">
+                  <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                    <Truck className="w-3 h-3" />
+                    Shipments & Waybills ({searchResults.shipments.length})
+                  </div>
+                  <div className="space-y-1">
+                    {searchResults.shipments.map((shp) => (
+                      <button
+                        key={shp.id}
+                        onClick={() => handleResultClick(shp.link)}
+                        className="w-full text-left p-2 rounded-xl hover:bg-slate-50 transition-colors flex items-center justify-between group cursor-pointer"
+                      >
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-bold font-mono text-slate-900 group-hover:text-[#0073EA]">
+                              {shp.tracking_number}
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-medium">
+                              ({shp.carrier_name})
+                            </span>
+                          </div>
+                          {shp.order_number && (
+                            <p className="text-[11px] text-slate-500 mt-0.5">
+                              Order: <span className="font-semibold text-slate-700">{shp.order_number}</span>
+                            </p>
+                          )}
+                        </div>
+                        <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 font-semibold text-slate-600">
+                          {shp.status_name}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Staff Section */}
+              {searchResults?.staff && searchResults.staff.length > 0 && (
+                <div className="p-2">
+                  <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                    <UserCheck className="w-3 h-3" />
+                    Staff Members ({searchResults.staff.length})
+                  </div>
+                  <div className="space-y-1">
+                    {searchResults.staff.map((st) => (
+                      <button
+                        key={st.id}
+                        onClick={() => handleResultClick(st.link)}
+                        className="w-full text-left p-2 rounded-xl hover:bg-slate-50 transition-colors flex items-center justify-between group cursor-pointer"
+                      >
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-bold text-slate-900 group-hover:text-[#0073EA]">
+                              {st.name}
+                            </span>
+                            {st.employee_id && (
+                              <span className="text-[9.5px] font-mono text-slate-400 bg-slate-100 px-1 py-0.2 rounded">
+                                {st.employee_id}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            {st.role_name} {st.department && `• ${st.department}`}
+                          </p>
+                        </div>
+                        <span className="text-[10px] text-slate-400">{st.email}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Production Batches Section */}
+              {searchResults?.batches && searchResults.batches.length > 0 && (
+                <div className="p-2">
+                  <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                    <Printer className="w-3 h-3" />
+                    Production Batches ({searchResults.batches.length})
+                  </div>
+                  <div className="space-y-1">
+                    {searchResults.batches.map((bt) => (
+                      <button
+                        key={bt.id}
+                        onClick={() => handleResultClick(bt.link)}
+                        className="w-full text-left p-2 rounded-xl hover:bg-slate-50 transition-colors flex items-center justify-between group cursor-pointer"
+                      >
+                        <div>
+                          <span className="text-xs font-bold font-mono text-slate-900 group-hover:text-[#0073EA]">
+                            {bt.batch_number}
+                          </span>
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            {bt.paper_stock} • {bt.size_format}
+                          </p>
+                        </div>
+                        <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 font-semibold border border-amber-200">
+                          Batch
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Empty State */}
+              {!isSearching && searchResults && searchResults.total === 0 && (
+                <div className="p-6 text-center space-y-2">
+                  <div className="w-9 h-9 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                    <Search className="w-4 h-4" />
+                  </div>
+                  <p className="text-xs font-semibold text-slate-700">No exact matches found</p>
+                  <p className="text-[11px] text-slate-400 max-w-xs mx-auto">
+                    Press <strong className="text-slate-700">Enter</strong> to perform a deep search across the Orders Command Center.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Dropdown Footer */}
+            <div className="p-2.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[11px]">
+              <button
+                onClick={() => handleResultClick(`/orders?search=${encodeURIComponent(searchQuery)}`)}
+                className="text-[#0073EA] font-semibold hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <span>Search all orders for &ldquo;{searchQuery}&rdquo;</span>
+                <ArrowRight className="w-3 h-3" />
+              </button>
+              <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                <span>↵ Enter to search</span>
+                <span>ESC to close</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Global Actions */}
