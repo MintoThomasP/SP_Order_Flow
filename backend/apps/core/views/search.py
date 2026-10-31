@@ -9,6 +9,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework import status
 
 from apps.orders.models import Order
+from apps.orders.permissions import is_status_accessible_for_role, get_user_role_code
 from apps.dispatch.models import Shipment
 from apps.authentication.models import User
 from apps.production.models import ProductionBatch
@@ -31,13 +32,14 @@ MODULE_NAVIGATION = [
 class GlobalSearchView(APIView):
     """
     GET /api/v1/core/search/?q=<term>&limit=5
-    High-performance unified cross-module search.
+    High-performance unified cross-module search with role access verification.
     """
     permission_classes = [AllowAny]
 
     def get(self, request):
         query = request.query_params.get("q", "").strip()
         limit = min(int(request.query_params.get("limit", 5)), 15)
+        user_role = get_user_role_code(request)
 
         if not query or len(query) < 1:
             return Response({
@@ -78,22 +80,25 @@ class GlobalSearchView(APIView):
             .order_by("-created_at")[:limit]
         )
 
-        orders = [
-            {
+        orders = []
+        for o in orders_qs:
+            status_code = o.status.code if o.status else ""
+            has_access = is_status_accessible_for_role(user_role, status_code)
+            orders.append({
                 "id": str(o.id),
                 "order_number": o.order_number,
                 "peecho_order_id": o.peecho_order_id,
                 "customer_name": o.customer_name or "Anonymous",
                 "customer_email": o.customer_email or "",
-                "status_code": o.status.code if o.status else "",
+                "status_code": status_code,
                 "status_name": o.status.name if o.status else "Unassigned",
                 "total_amount": float(o.total_amount) if o.total_amount else 0.0,
                 "currency": o.currency or "USD",
                 "created_at": o.created_at.isoformat() if o.created_at else None,
                 "link": f"/orders?search={o.order_number}",
-            }
-            for o in orders_qs
-        ]
+                "has_access": has_access,
+                "access_message": "Access granted." if has_access else "You have no access to this job / this order",
+            })
 
         # 3. Search Logistics Shipments & Waybills
         shipments_qs = (

@@ -29,6 +29,7 @@ import {
   Radio,
   Compass,
   ArrowRight,
+  Lock,
 } from "lucide-react";
 import { NAVIGATION_ITEMS } from "./navigation-config";
 import { authApi, searchApi, GlobalSearchResponse } from "@/services/api";
@@ -57,6 +58,7 @@ export const Header: React.FC = () => {
   const {
     notifications,
     unreadCount,
+    addNotification,
     markAsRead,
     markAllAsRead,
     clearNotification,
@@ -332,36 +334,83 @@ export const Header: React.FC = () => {
                     </button>
                   </div>
                   <div className="space-y-1">
-                    {searchResults.orders.map((ord) => (
-                      <button
-                        key={ord.id}
-                        onClick={() => handleResultClick(ord.link)}
-                        className="w-full text-left p-2 rounded-xl hover:bg-slate-50 transition-colors flex items-center justify-between group cursor-pointer"
-                      >
-                        <div className="min-w-0 pr-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-slate-900 group-hover:text-[#0073EA] transition-colors">
-                              {ord.order_number}
-                            </span>
-                            <span
-                              className={`text-[9.5px] px-1.5 py-0.5 rounded-full font-semibold border ${getStatusBadgeClass(
-                                ord.status_code
-                              )}`}
-                            >
-                              {ord.status_name}
-                            </span>
+                    {searchResults.orders.map((ord) => {
+                      const isRestricted = ord.has_access === false;
+                      return (
+                        <button
+                          key={ord.id}
+                          onClick={() => {
+                            if (isRestricted) {
+                              addNotification({
+                                title: "Access Restricted",
+                                message: `You have no access to this job / this order (${ord.order_number}). Current stage: ${ord.status_name}.`,
+                                type: "warning",
+                              });
+                            } else {
+                              handleResultClick(ord.link);
+                            }
+                          }}
+                          className={`w-full text-left p-2 rounded-xl transition-all flex items-center justify-between group cursor-pointer ${
+                            isRestricted
+                              ? "bg-amber-50/60 hover:bg-amber-100/70 border border-amber-200/80"
+                              : "hover:bg-slate-50"
+                          }`}
+                        >
+                          <div className="min-w-0 pr-2">
+                            <div className="flex items-center gap-2">
+                              {isRestricted ? (
+                                <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                              ) : null}
+                              <span
+                                className={`text-xs font-bold transition-colors ${
+                                  isRestricted
+                                    ? "text-slate-800"
+                                    : "text-slate-900 group-hover:text-[#0073EA]"
+                                }`}
+                              >
+                                {ord.order_number}
+                              </span>
+                              {isRestricted ? (
+                                <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold bg-rose-100 text-rose-800 border border-rose-200">
+                                  Restricted
+                                </span>
+                              ) : (
+                                <span
+                                  className={`text-[9.5px] px-1.5 py-0.5 rounded-full font-semibold border ${getStatusBadgeClass(
+                                    ord.status_code
+                                  )}`}
+                                >
+                                  {ord.status_name}
+                                </span>
+                              )}
+                            </div>
+                            {isRestricted ? (
+                              <p className="text-[11px] font-semibold text-rose-700 mt-0.5 flex items-center gap-1">
+                                <span>You have no access to this job</span>
+                                <span className="text-slate-400 font-normal">
+                                  • Stage: {ord.status_name}
+                                </span>
+                              </p>
+                            ) : (
+                              <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                                {ord.customer_name} {ord.customer_email && `• ${ord.customer_email}`}
+                              </p>
+                            )}
                           </div>
-                          <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                            {ord.customer_name} {ord.customer_email && `• ${ord.customer_email}`}
-                          </p>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <span className="text-xs font-bold text-slate-800">
-                            ${ord.total_amount.toFixed(2)}
-                          </span>
-                        </div>
-                      </button>
-                    ))}
+                          <div className="text-right shrink-0">
+                            {isRestricted ? (
+                              <span className="text-[10px] font-bold text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded border border-amber-200">
+                                Locked
+                              </span>
+                            ) : (
+                              <span className="text-xs font-bold text-slate-800">
+                                ${ord.total_amount.toFixed(2)}
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}

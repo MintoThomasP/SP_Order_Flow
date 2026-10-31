@@ -564,6 +564,77 @@ export default function OrdersPage() {
     return activeDisplayOrders.slice(start, start + pageSize);
   }, [activeDisplayOrders, currentPage, pageSize]);
 
+  // Check if an order exists in the system that the user does not have permission to view
+  const restrictedSearchMatch = useMemo(() => {
+    if (!searchQuery || searchQuery.trim().length === 0) return null;
+
+    // 1. Check if backend returned an access_restricted_match in the response
+    if (ordersData?.access_restricted_match && !ordersData.access_restricted_match.has_access) {
+      return ordersData.access_restricted_match;
+    }
+
+    // 2. Check if an order was returned in raw ordersData.results but filtered out by role station scope
+    const rawList = ordersData?.results || [];
+    const term = searchQuery.trim().toLowerCase();
+    const foundInRaw = rawList.find((ord) => {
+      const matchNumber = (ord.order_number || "").toLowerCase().includes(term);
+      const matchPeecho = (ord.peecho_order_id || "").toLowerCase().includes(term);
+      const matchCustomer = (ord.customer_name || "").toLowerCase().includes(term);
+      return matchNumber || matchPeecho || matchCustomer;
+    });
+
+    if (foundInRaw) {
+      const statusCode = (foundInRaw.status_details?.code || foundInRaw.status || "").toUpperCase();
+      const isAllowed = isOrderRelevantForRole(effectiveRole, statusCode);
+      if (!isAllowed) {
+        return {
+          found: true,
+          has_access: false,
+          order_number: foundInRaw.order_number,
+          status_code: statusCode,
+          status_name: foundInRaw.status_details?.name || foundInRaw.status || "Unassigned",
+          message: "You have no access to this job / this order",
+        };
+      }
+    }
+
+    return null;
+  }, [searchQuery, ordersData, effectiveRole]);
+
+  // Fast asynchronous access verification if local filter returned 0 results
+  const [asyncAccessMatch, setAsyncAccessMatch] = useState<{
+    found: boolean;
+    has_access: boolean;
+    order_number?: string;
+    status_code?: string;
+    status_name?: string;
+    message?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!searchQuery || searchQuery.trim().length < 2 || activeDisplayOrders.length > 0) {
+      setAsyncAccessMatch(null);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const check = await ordersApi.checkAccess(searchQuery.trim());
+        if (check.found && !check.has_access) {
+          setAsyncAccessMatch(check);
+        } else {
+          setAsyncAccessMatch(null);
+        }
+      } catch {
+        setAsyncAccessMatch(null);
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, activeDisplayOrders.length]);
+
+  const effectiveRestrictedMatch = restrictedSearchMatch || asyncAccessMatch;
+
   // Table Column Definitions
   const orderColumns: Column<Order>[] = [
     {
@@ -1331,6 +1402,51 @@ export default function OrdersPage() {
         </div>
       </div>
 
+      {/* ACCESS RESTRICTION BANNER WHEN SEARCHING RESTRICTED JOB */}
+      {searchQuery && effectiveRestrictedMatch && (
+        <div className="mb-4 p-5 rounded-2xl bg-amber-50/90 border border-amber-200/90 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in zoom-in-95">
+          <div className="flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 border border-amber-300 shadow-2xs">
+              <Lock className="w-5 h-5 text-amber-700" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h4 className="text-sm font-bold text-slate-900">
+                  You have no access to this job / this order
+                </h4>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-300">
+                  Access Restricted
+                </span>
+                {effectiveRestrictedMatch.order_number && (
+                  <span className="text-[11px] font-mono font-bold text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-200">
+                    {effectiveRestrictedMatch.order_number}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-600 mt-1 max-w-2xl leading-relaxed">
+                This job exists in the order database, but it is currently in the{" "}
+                <strong className="text-slate-900 font-bold">
+                  {effectiveRestrictedMatch.status_name}
+                </strong>{" "}
+                stage. Your current role (
+                <strong className="text-slate-800 font-bold">{roleProfile?.title || userRole}</strong>
+                ) does not have authorization to view or manage orders in this workstation.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSearchQuery("")}
+              className="text-xs border-amber-300 text-slate-700 hover:bg-amber-100/60 font-semibold cursor-pointer"
+            >
+              Clear Search
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Main Orders Table */}
       <Card noPadding={true}>
         <Table
@@ -1339,7 +1455,9 @@ export default function OrdersPage() {
           keyExtractor={(ord) => ord.id}
           isLoading={ordersLoading}
           emptyMessage={
-            orderQueueTab === "pending"
+            effectiveRestrictedMatch
+              ? `You have no access to this job / this order (${effectiveRestrictedMatch.order_number}). Current stage: ${effectiveRestrictedMatch.status_name} (Restricted for your role).`
+              : orderQueueTab === "pending"
               ? `All caught up! No pending orders awaiting action in ${wsQueue.stationName}.`
               : orderQueueTab === "processed"
               ? `No processed orders found in this station archive.`

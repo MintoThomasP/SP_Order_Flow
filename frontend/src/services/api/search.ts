@@ -12,6 +12,8 @@ export interface GlobalSearchOrder {
   currency: string;
   created_at?: string;
   link: string;
+  has_access?: boolean;
+  access_message?: string;
 }
 
 export interface GlobalSearchShipment {

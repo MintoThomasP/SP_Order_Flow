@@ -5,11 +5,13 @@ from datetime import timedelta
 from decimal import Decimal
 import random
 from django.utils import timezone
+from django.db.models import Q
 from rest_framework import viewsets, status, filters
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.decorators import action
 
+from apps.orders.permissions import is_status_accessible_for_role, get_user_role_code
 from apps.orders.models import Order, OrderItem, PeechoPayloadLog, PrintifyPayloadLog, PeechoIntegrationConfig
 from apps.orders.serializers import (
     OrderSerializer,
@@ -506,6 +508,89 @@ class OrderViewSet(viewsets.ModelViewSet):
                 qs = qs.filter(status__code__in=["DISPATCHED", "DELIVERED", "EXCEPTION_HOLD"])
 
         return qs
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        search_query = request.query_params.get("search", "").strip()
+
+        # If search query is present and 0 results were returned, check if matching order exists in full database
+        if search_query and isinstance(response.data, dict) and response.data.get("count", 0) == 0:
+            restricted_order = Order.objects.filter(
+                Q(order_number__icontains=search_query)
+                | Q(peecho_order_id__icontains=search_query)
+                | Q(external_pod_order_id__icontains=search_query)
+                | Q(customer_name__icontains=search_query)
+                | Q(customer_email__icontains=search_query)
+            ).select_related("status").first()
+
+            if restricted_order:
+                response.data["access_restricted_match"] = {
+                    "found": True,
+                    "has_access": False,
+                    "order_number": restricted_order.order_number,
+                    "status_code": restricted_order.status.code if restricted_order.status else "",
+                    "status_name": restricted_order.status.name if restricted_order.status else "Unassigned",
+                    "message": "You have no access to this job / this order",
+                }
+        return response
+
+    def retrieve(self, request, *args, **kwargs):
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        pk = self.kwargs.get(lookup_url_kwarg)
+        try:
+            return super().retrieve(request, *args, **kwargs)
+        except Exception:
+            # Check if order exists in full DB
+            ord_obj = Order.objects.filter(pk=pk).select_related("status").first()
+            if ord_obj:
+                return Response(
+                    {
+                        "error": "Access Denied",
+                        "message": "You have no access to this job / this order",
+                        "order_number": ord_obj.order_number,
+                        "status_code": ord_obj.status.code if ord_obj.status else "",
+                        "status_name": ord_obj.status.name if ord_obj.status else "Unassigned",
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            raise
+
+    @action(detail=False, methods=["get"], url_path="check-access")
+    def check_access(self, request):
+        """
+        GET /api/v1/orders/check-access/?search=<term>
+        Explicit access verification when searching for an order.
+        """
+        search_term = request.query_params.get("search", "").strip()
+        if not search_term:
+            return Response({"found": False, "has_access": False, "message": "Search query required."})
+
+        ord_obj = Order.objects.filter(
+            Q(order_number__iexact=search_term)
+            | Q(peecho_order_id__iexact=search_term)
+            | Q(order_number__icontains=search_term)
+            | Q(peecho_order_id__icontains=search_term)
+        ).select_related("status").first()
+
+        if not ord_obj:
+            return Response({
+                "found": False,
+                "has_access": False,
+                "message": f"No order found matching '{search_term}'.",
+            })
+
+        user_role = get_user_role_code(request)
+        status_code = ord_obj.status.code if ord_obj.status else ""
+        has_access = is_status_accessible_for_role(user_role, status_code)
+
+        return Response({
+            "found": True,
+            "has_access": has_access,
+            "order_number": ord_obj.order_number,
+            "status_code": status_code,
+            "status_name": ord_obj.status.name if ord_obj.status else "Unassigned",
+            "message": "Access granted." if has_access else "You have no access to this job / this order",
+        })
 
     @action(detail=True, methods=["post", "patch"], url_path="status")
     def update_order_status(self, request, pk=None):

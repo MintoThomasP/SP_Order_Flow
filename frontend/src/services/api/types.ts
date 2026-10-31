@@ -270,6 +270,14 @@ export interface PaginatedResponse<T> {
   next: string | null;
   previous: string | null;
   results: T[];
+  access_restricted_match?: {
+    found: boolean;
+    has_access: boolean;
+    order_number: string;
+    status_code: string;
+    status_name: string;
+    message: string;
+  };
 }
 
 export interface CarrierChoice {

@@ -255,5 +255,28 @@ export const ordersApi = {
     const res = await apiClient.post("/webhooks/printify/", payload, { headers });
     return res.data;
   },
+
+  checkAccess: async (
+    search: string
+  ): Promise<{
+    found: boolean;
+    has_access: boolean;
+    order_number?: string;
+    status_code?: string;
+    status_name?: string;
+    message: string;
+  }> => {
+    const res = await apiClient.get<{
+      found: boolean;
+      has_access: boolean;
+      order_number?: string;
+      status_code?: string;
+      status_name?: string;
+      message: string;
+    }>("/orders/check-access/", {
+      params: { search },
+    });
+    return res.data;
+  },
 };
 
