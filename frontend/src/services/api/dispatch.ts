@@ -14,8 +14,13 @@ export const dispatchApi = {
     status?: string;
     page?: number;
     page_size?: number;
+    ordering?: string;
   }): Promise<PaginatedResponse<Shipment>> => {
-    const res = await apiClient.get<PaginatedResponse<Shipment>>("/dispatch/shipments/", { params });
+    const mergedParams = {
+      ordering: "-created_at",
+      ...params,
+    };
+    const res = await apiClient.get<PaginatedResponse<Shipment>>("/dispatch/shipments/", { params: mergedParams });
     return res.data;
   },
 

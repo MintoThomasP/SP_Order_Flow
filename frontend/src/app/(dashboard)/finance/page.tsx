@@ -114,8 +114,17 @@ export default function FinancePage() {
     },
   });
 
-  // Financial KPI Metrics
-  const invoices = invoicesData?.results || [];
+  // Financial KPI Metrics (strictly descending - newest first)
+  const invoices = useMemo(() => {
+    const list = [...(invoicesData?.results || [])];
+    return list.sort((a, b) => {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      if (timeB !== timeA) return timeB - timeA;
+      return (b.invoice_number || "").localeCompare(a.invoice_number || "", undefined, { numeric: true });
+    });
+  }, [invoicesData?.results]);
+
   const totalRevenue = useMemo(() => {
     return invoices.reduce((acc, inv) => acc + Number(inv.grand_total || 0), 0);
   }, [invoices]);
@@ -134,7 +143,12 @@ export default function FinancePage() {
 
   const availableOrders = useMemo(() => {
     const list = [...(ordersData?.results || [])];
-    return list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    return list.sort((a, b) => {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      if (timeB !== timeA) return timeB - timeA;
+      return (b.order_number || "").localeCompare(a.order_number || "", undefined, { numeric: true });
+    });
   }, [ordersData?.results]);
 
   const isAllOrdersSelected = useMemo(() => {

@@ -365,6 +365,14 @@ class PrintifyPayloadLogViewSet(viewsets.ReadOnlyModelViewSet):
     ordering_fields = ["created_at", "status"]
     ordering = ["-created_at"]
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        ordering_param = self.request.query_params.get("ordering")
+        if ordering_param:
+            fields = [f.strip() for f in ordering_param.split(",") if f.strip()]
+            return qs.order_by(*fields)
+        return qs.order_by("-created_at")
+
 
 class PrintifyConfigView(APIView):
     """

@@ -507,7 +507,11 @@ class OrderViewSet(viewsets.ModelViewSet):
             elif role_code == "FINANCE_SPECIALIST":
                 qs = qs.filter(status__code__in=["DISPATCHED", "DELIVERED", "EXCEPTION_HOLD"])
 
-        return qs
+        ordering_param = self.request.query_params.get("ordering")
+        if ordering_param:
+            fields = [f.strip() for f in ordering_param.split(",") if f.strip()]
+            return qs.order_by(*fields)
+        return qs.order_by("-created_at")
 
     def list(self, request, *args, **kwargs):
         response = super().list(request, *args, **kwargs)
@@ -908,6 +912,14 @@ class PeechoPayloadLogViewSet(viewsets.ReadOnlyModelViewSet):
     search_fields = ["peecho_order_id", "status", "event_type"]
     ordering_fields = ["created_at", "status"]
     ordering = ["-created_at"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        ordering_param = self.request.query_params.get("ordering")
+        if ordering_param:
+            fields = [f.strip() for f in ordering_param.split(",") if f.strip()]
+            return qs.order_by(*fields)
+        return qs.order_by("-created_at")
 
 
 class PeechoConfigView(APIView):

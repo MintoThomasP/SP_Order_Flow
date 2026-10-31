@@ -49,7 +49,12 @@ class ProductionBatchViewSet(viewsets.ModelViewSet):
             qs = qs.filter(target_press=target_press)
         if status_param and status_param != "ALL":
             qs = qs.filter(status__code=status_param)
-        return qs.distinct()
+
+        ordering_param = self.request.query_params.get("ordering")
+        if ordering_param:
+            fields = [f.strip() for f in ordering_param.split(",") if f.strip()]
+            return qs.distinct().order_by(*fields)
+        return qs.distinct().order_by("-created_at")
 
     def create(self, request, *args, **kwargs):
         """

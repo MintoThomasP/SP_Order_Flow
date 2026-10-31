@@ -516,21 +516,30 @@ export default function OrdersPage() {
       });
     }
 
-    // Sort
+    // Sort - strictly descending by created_at (newest created first) by default
     list.sort((a, b) => {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
       if (sortBy === "newest") {
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        if (timeB !== timeA) return timeB - timeA;
+        return (b.order_number || "").localeCompare(a.order_number || "", undefined, { numeric: true });
       }
       if (sortBy === "sla") {
-        return new Date(a.sla_deadline).getTime() - new Date(b.sla_deadline).getTime();
+        const slaA = a.sla_deadline ? new Date(a.sla_deadline).getTime() : Infinity;
+        const slaB = b.sla_deadline ? new Date(b.sla_deadline).getTime() : Infinity;
+        if (slaA !== slaB) return slaA - slaB;
+        return timeB - timeA;
       }
       if (sortBy === "amount") {
-        return Number(b.total_amount || 0) - Number(a.total_amount || 0);
+        const diff = Number(b.total_amount || 0) - Number(a.total_amount || 0);
+        if (diff !== 0) return diff;
+        return timeB - timeA;
       }
       if (sortBy === "order_number") {
-        return b.order_number.localeCompare(a.order_number);
+        return (b.order_number || "").localeCompare(a.order_number || "", undefined, { numeric: true });
       }
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      if (timeB !== timeA) return timeB - timeA;
+      return (b.order_number || "").localeCompare(a.order_number || "", undefined, { numeric: true });
     });
 
     return list;
@@ -639,16 +648,33 @@ export default function OrdersPage() {
   const orderColumns: Column<Order>[] = [
     {
       header: "Order Number",
-      cell: (ord) => (
-        <div className="flex flex-col">
-          <span className="font-mono font-bold text-xs text-[#0073EA] hover:underline">
-            {ord.order_number}
-          </span>
-          <span className="font-mono text-[11px] text-slate-400">
-            {ord.peecho_order_id || ord.external_pod_order_id || "Direct Job"}
-          </span>
-        </div>
-      ),
+      cell: (ord) => {
+        const createdDate = ord.created_at
+          ? new Date(ord.created_at).toLocaleString("en-GB", {
+              day: "2-digit",
+              month: "short",
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: false,
+            })
+          : "";
+        return (
+          <div className="flex flex-col">
+            <span className="font-mono font-bold text-xs text-[#0073EA] hover:underline">
+              {ord.order_number}
+            </span>
+            <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+              <span className="font-mono">{ord.peecho_order_id || ord.external_pod_order_id || "Direct Job"}</span>
+              {createdDate && (
+                <>
+                  <span>•</span>
+                  <span className="text-[10px] text-slate-500 font-medium whitespace-nowrap">{createdDate}</span>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      },
     },
     {
       header: "Channel",

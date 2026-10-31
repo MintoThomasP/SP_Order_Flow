@@ -78,7 +78,12 @@ class ArtworkVerificationViewSet(viewsets.ModelViewSet):
             qs = qs.filter(verification_status__iexact=status_filter)
         if order_id:
             qs = qs.filter(order_id=order_id)
-        return qs
+
+        ordering_param = self.request.query_params.get("ordering")
+        if ordering_param:
+            fields = [f.strip() for f in ordering_param.split(",") if f.strip()]
+            return qs.order_by(*fields)
+        return qs.order_by("-created_at")
 
     @action(detail=True, methods=["post"], url_path="approve")
     def approve_artwork(self, request, pk=None):

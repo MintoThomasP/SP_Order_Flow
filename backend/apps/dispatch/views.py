@@ -148,6 +148,14 @@ class ShipmentViewSet(viewsets.ModelViewSet):
     ordering_fields = ["created_at", "dispatched_at", "weight_kg", "status_code"]
     ordering = ["-created_at"]
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        ordering_param = self.request.query_params.get("ordering")
+        if ordering_param:
+            fields = [f.strip() for f in ordering_param.split(",") if f.strip()]
+            return qs.order_by(*fields)
+        return qs.order_by("-created_at")
+
     @action(detail=True, methods=["post"], url_path="retry-peecho-sync")
     def retry_peecho_sync(self, request, pk=None):
         """

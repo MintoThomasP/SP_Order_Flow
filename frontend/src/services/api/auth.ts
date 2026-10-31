@@ -53,8 +53,13 @@ export const authApi = {
     search?: string;
     page?: number;
     page_size?: number;
+    ordering?: string;
   } | string): Promise<PaginatedResponse<StaffUser>> => {
-    const queryParams = typeof params === "string" ? { search: params } : params;
+    const baseParams = typeof params === "string" ? { search: params } : params;
+    const queryParams = {
+      ordering: "-created_at",
+      ...baseParams,
+    };
     const res = await apiClient.get<PaginatedResponse<StaffUser>>("/auth/users/", {
       params: queryParams,
     });
@@ -99,9 +104,14 @@ export const authApi = {
     search?: string;
     page?: number;
     page_size?: number;
+    ordering?: string;
   }): Promise<PaginatedResponse<UserAuditLog>> => {
+    const mergedParams = {
+      ordering: "-created_at",
+      ...params,
+    };
     const res = await apiClient.get<PaginatedResponse<UserAuditLog>>("/auth/audit-logs/", {
-      params,
+      params: mergedParams,
     });
     return res.data;
   },

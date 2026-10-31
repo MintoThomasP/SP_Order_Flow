@@ -313,7 +313,7 @@ export default function StaffManagementPage() {
     return matches.length > 0 ? matches : assignableRoles;
   }, [assignableRoles, assignRoleData.department]);
 
-  // Filtered users in Directory based on Department
+  // Filtered users in Directory based on Department (strictly descending - newest first)
   const filteredUsers = useMemo(() => {
     let list = usersData?.results || [];
     if (departmentFilter !== "ALL") {
@@ -324,7 +324,12 @@ export default function StaffManagementPage() {
         return uDept.toLowerCase() === departmentFilter.toLowerCase();
       });
     }
-    return list;
+    return [...list].sort((a, b) => {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      if (timeB !== timeA) return timeB - timeA;
+      return (b.email || "").localeCompare(a.email || "");
+    });
   }, [usersData?.results, departmentFilter]);
 
   // Auto-set matching role when new user department changes and role is unset or doesn't match
@@ -422,6 +427,15 @@ export default function StaffManagementPage() {
     queryKey: ["audit-logs", auditFilterAction, auditPage, auditPageSize],
     queryFn: () => authApi.getAuditLogs({ action: auditFilterAction || undefined, page: auditPage, page_size: auditPageSize }),
   });
+
+  const sortedAuditLogs = useMemo(() => {
+    const list = [...(auditLogsData?.results || [])];
+    return list.sort((a, b) => {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return timeB - timeA;
+    });
+  }, [auditLogsData?.results]);
 
   // Mutations
   const createUserMutation = useMutation({
@@ -1062,7 +1076,7 @@ export default function StaffManagementPage() {
 
           <Card noPadding={true}>
             <Table
-              data={auditLogsData?.results || []}
+              data={sortedAuditLogs}
               columns={auditColumns}
               keyExtractor={(log) => log.id}
               isLoading={auditLoading}

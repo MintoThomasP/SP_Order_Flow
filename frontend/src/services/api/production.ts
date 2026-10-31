@@ -28,9 +28,14 @@ export const productionApi = {
     target_press?: string;
     page?: number;
     page_size?: number;
+    ordering?: string;
   }): Promise<PaginatedResponse<ProductionBatch>> => {
+    const mergedParams = {
+      ordering: "-created_at",
+      ...params,
+    };
     const res = await apiClient.get<PaginatedResponse<ProductionBatch>>("/production/batches/", {
-      params,
+      params: mergedParams,
     });
     return res.data;
   },

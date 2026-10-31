@@ -9,10 +9,15 @@ export const prepressApi = {
     search?: string;
     page?: number;
     page_size?: number;
+    ordering?: string;
   }): Promise<PaginatedResponse<ArtworkVerification>> => {
+    const mergedParams = {
+      ordering: "-created_at",
+      ...params,
+    };
     const res = await apiClient.get<PaginatedResponse<ArtworkVerification>>(
       "/prepress/verifications/",
-      { params }
+      { params: mergedParams }
     );
     return res.data;
   },

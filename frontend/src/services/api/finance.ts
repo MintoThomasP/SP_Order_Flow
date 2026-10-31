@@ -29,8 +29,13 @@ export const financeApi = {
     status?: string;
     page?: number;
     page_size?: number;
+    ordering?: string;
   }): Promise<PaginatedResponse<PeechoInvoice>> => {
-    const res = await apiClient.get<PaginatedResponse<PeechoInvoice>>("/finance/invoices/", { params });
+    const mergedParams = {
+      ordering: "-created_at",
+      ...params,
+    };
+    const res = await apiClient.get<PaginatedResponse<PeechoInvoice>>("/finance/invoices/", { params: mergedParams });
     return res.data;
   },
 

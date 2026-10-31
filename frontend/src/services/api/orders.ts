@@ -23,8 +23,12 @@ export const ordersApi = {
     page_size?: number;
     ordering?: string;
   }): Promise<PaginatedResponse<Order>> => {
+    const mergedParams = {
+      ordering: "-created_at",
+      ...params,
+    };
     const res = await apiClient.get<PaginatedResponse<Order>>("/orders/", {
-      params,
+      params: mergedParams,
     });
     return res.data;
   },

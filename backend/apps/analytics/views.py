@@ -156,6 +156,14 @@ class ReprintDamageLogViewSet(viewsets.ModelViewSet):
     ordering_fields = ["created_at", "estimated_cost_loss", "status"]
     ordering = ["-created_at"]
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        ordering_param = self.request.query_params.get("ordering")
+        if ordering_param:
+            fields = [f.strip() for f in ordering_param.split(",") if f.strip()]
+            return qs.order_by(*fields)
+        return qs.order_by("-created_at")
+
 
 class SLAAlertLogViewSet(viewsets.ReadOnlyModelViewSet):
     """
@@ -164,6 +172,14 @@ class SLAAlertLogViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = SLAAlertLog.objects.select_related("order").all()
     serializer_class = SLAAlertLogSerializer
     ordering = ["-created_at"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        ordering_param = self.request.query_params.get("ordering")
+        if ordering_param:
+            fields = [f.strip() for f in ordering_param.split(",") if f.strip()]
+            return qs.order_by(*fields)
+        return qs.order_by("-created_at")
 
     @action(detail=False, methods=["post"], url_path="trigger-check")
     def trigger_check(self, request):
@@ -183,6 +199,14 @@ class OdooSyncLogViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = OdooSyncLogSerializer
     search_fields = ["silverpoint_reference", "odoo_model", "sync_status"]
     ordering = ["-created_at"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        ordering_param = self.request.query_params.get("ordering")
+        if ordering_param:
+            fields = [f.strip() for f in ordering_param.split(",") if f.strip()]
+            return qs.order_by(*fields)
+        return qs.order_by("-created_at")
 
 
 class TriggerOdooSyncView(APIView):

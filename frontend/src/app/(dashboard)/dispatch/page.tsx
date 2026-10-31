@@ -319,10 +319,29 @@ export default function DispatchPage() {
   const peechoSyncedCount = shipments.filter((s) => s.peecho_synced).length;
   const syncPercentage = totalCount > 0 ? Math.round((peechoSyncedCount / totalCount) * 100) : 100;
 
+  const sortedReadyOrders = useMemo(() => {
+    const list = [...(readyOrdersData?.results || [])];
+    return list.sort((a, b) => {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      if (timeB !== timeA) return timeB - timeA;
+      return (b.order_number || "").localeCompare(a.order_number || "", undefined, { numeric: true });
+    });
+  }, [readyOrdersData?.results]);
+
   const filteredShipments = useMemo(() => {
-    if (statusFilter === "ALL") return shipments;
-    if (statusFilter === "PEECHO_PENDING") return shipments.filter((s) => !s.peecho_synced);
-    return shipments.filter((s) => s.status_code === statusFilter);
+    let list = shipments;
+    if (statusFilter === "PEECHO_PENDING") {
+      list = shipments.filter((s) => !s.peecho_synced);
+    } else if (statusFilter !== "ALL") {
+      list = shipments.filter((s) => s.status_code === statusFilter);
+    }
+    return [...list].sort((a, b) => {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      if (timeB !== timeA) return timeB - timeA;
+      return (b.tracking_number || "").localeCompare(a.tracking_number || "");
+    });
   }, [shipments, statusFilter]);
 
   return (
@@ -450,10 +469,10 @@ export default function DispatchPage() {
                 </div>
 
                 {/* Quick select chips from ready queue */}
-                {readyOrdersData?.results && readyOrdersData.results.length > 0 && (
+                {sortedReadyOrders.length > 0 && (
                   <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                     <span className="text-[11px] text-slate-400 font-medium">Ready Orders:</span>
-                    {readyOrdersData.results.slice(0, 4).map((o) => (
+                    {sortedReadyOrders.slice(0, 4).map((o) => (
                       <button
                         key={o.id}
                         type="button"
@@ -710,8 +729,8 @@ export default function DispatchPage() {
               </div>
             </CardHeader>
             <CardContent className="p-0 max-h-[500px] overflow-y-auto divide-y divide-slate-100">
-              {readyOrdersData?.results && readyOrdersData.results.length > 0 ? (
-                readyOrdersData.results.map((order: Order) => (
+              {sortedReadyOrders.length > 0 ? (
+                sortedReadyOrders.map((order: Order) => (
                   <div
                     key={order.id}
                     onClick={() => handleSelectOrder(order)}

@@ -497,9 +497,9 @@ export default function ProductionBatchingPage() {
     return (b.status_code || b.status_details?.code || b.status || "QUEUED_PRESS").toUpperCase();
   };
 
-  // Filter batches by machine, status, and search query
+  // Filter batches by machine, status, and search query (strictly descending - newest first)
   const filteredBatches = useMemo(() => {
-    return rawBatches.filter((b) => {
+    const list = rawBatches.filter((b) => {
       const bStatus = getBatchStatusCode(b);
       if (pressFilter !== "ALL" && b.target_press !== pressFilter) return false;
       if (statusFilter !== "ALL" && bStatus !== statusFilter) return false;
@@ -519,6 +519,13 @@ export default function ProductionBatchingPage() {
         return matchesBatch || matchesAnyOrder;
       }
       return true;
+    });
+
+    return list.sort((a, b) => {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      if (timeB !== timeA) return timeB - timeA;
+      return (b.batch_number || "").localeCompare(a.batch_number || "", undefined, { numeric: true });
     });
   }, [rawBatches, pressFilter, statusFilter, searchQuery]);
 
@@ -556,17 +563,25 @@ export default function ProductionBatchingPage() {
     return list;
   }, [rawBatches]);
 
-  // Filter eligible (unbatched) orders by search query
+  // Filter eligible (unbatched) orders by search query (strictly descending - newest first)
   const filteredUnbatchedOrders = useMemo(() => {
-    if (!searchQuery.trim()) return rawEligibleOrders;
-    const q = searchQuery.toLowerCase().trim();
-    return rawEligibleOrders.filter(
-      (o) =>
-        (o.order_number || "").toLowerCase().includes(q) ||
-        (o.peecho_order_id && o.peecho_order_id.toLowerCase().includes(q)) ||
-        (o.customer_name && o.customer_name.toLowerCase().includes(q)) ||
-        o.items?.some((it) => (it.product_type || "").toLowerCase().includes(q))
-    );
+    let list = rawEligibleOrders;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter(
+        (o) =>
+          (o.order_number || "").toLowerCase().includes(q) ||
+          (o.peecho_order_id && o.peecho_order_id.toLowerCase().includes(q)) ||
+          (o.customer_name && o.customer_name.toLowerCase().includes(q)) ||
+          o.items?.some((it) => (it.product_type || "").toLowerCase().includes(q))
+      );
+    }
+    return [...list].sort((a, b) => {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      if (timeB !== timeA) return timeB - timeA;
+      return (b.order_number || "").localeCompare(a.order_number || "", undefined, { numeric: true });
+    });
   }, [rawEligibleOrders, searchQuery]);
 
   // Paginated Slices

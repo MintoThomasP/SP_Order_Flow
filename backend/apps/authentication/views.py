@@ -96,6 +96,14 @@ class UserViewSet(viewsets.ModelViewSet):
     ordering_fields = ["created_at", "email", "department", "last_login"]
     ordering = ["-created_at"]
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        ordering_param = self.request.query_params.get("ordering")
+        if ordering_param:
+            fields = [f.strip() for f in ordering_param.split(",") if f.strip()]
+            return qs.order_by(*fields)
+        return qs.order_by("-created_at")
+
     def get_serializer_class(self):
         if self.action in ["create", "update", "partial_update"]:
             return UserCreateUpdateSerializer
@@ -305,4 +313,8 @@ class UserAuditLogViewSet(viewsets.ReadOnlyModelViewSet):
         if user_id:
             qs = qs.filter(user_id=user_id)
 
-        return qs
+        ordering_param = self.request.query_params.get("ordering")
+        if ordering_param:
+            fields = [f.strip() for f in ordering_param.split(",") if f.strip()]
+            return qs.order_by(*fields)
+        return qs.order_by("-created_at")

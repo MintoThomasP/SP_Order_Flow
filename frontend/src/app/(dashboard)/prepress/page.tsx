@@ -125,9 +125,9 @@ export default function PrepressPage() {
     return { isApproved, isFlagged, isPending: !isApproved && !isFlagged };
   };
 
-  // Filtered verifications
+  // Filtered verifications (strictly descending - newest created first)
   const filteredVerifications = useMemo(() => {
-    return verifications.filter((v) => {
+    const list = verifications.filter((v) => {
       const matchesSearch =
         v.order_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         v.peecho_order_id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -142,6 +142,13 @@ export default function PrepressPage() {
         (statusFilter === "FLAGGED" && isFlagged);
 
       return matchesSearch && matchesStatus;
+    });
+
+    return list.sort((a, b) => {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      if (timeB !== timeA) return timeB - timeA;
+      return (b.order_number || "").localeCompare(a.order_number || "", undefined, { numeric: true });
     });
   }, [verifications, searchQuery, statusFilter]);
 
