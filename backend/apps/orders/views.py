@@ -105,6 +105,17 @@ class OrderSimulateView(APIView):
         priorities = ["STANDARD_72H", "EXPRESS_24H", "RUSH_8H"]
         chosen_priority = request.data.get("priority") or random.choice(priorities)
 
+        custom_customer_name = (request.data.get("customer_name") or "").strip()
+        custom_customer_email = (request.data.get("customer_email") or "").strip()
+        custom_customer_phone = (request.data.get("customer_phone") or "").strip()
+        custom_product_type = (request.data.get("product_type") or "").strip()
+        custom_paper_stock = (request.data.get("paper_stock") or "").strip()
+        custom_quantity_raw = request.data.get("quantity")
+        custom_quantity = int(custom_quantity_raw) if custom_quantity_raw and str(custom_quantity_raw).isdigit() else None
+        custom_amount_raw = request.data.get("total_amount")
+        custom_city = (request.data.get("city") or "").strip()
+        custom_country = (request.data.get("country") or "").strip()
+
         client_ip = request.META.get("HTTP_X_FORWARDED_FOR") or request.META.get("REMOTE_ADDR") or "127.0.0.1"
         rand_id = random.randint(100000, 999999)
 
@@ -142,33 +153,43 @@ class OrderSimulateView(APIView):
                 ("Johannes Becker", "j.becker@example.de", "+49 30 123456", "Berlin", "DE"),
             ]
             cust = random.choice(customer_names)
+            c_name = custom_customer_name or cust[0]
+            c_email = custom_customer_email or cust[1]
+            c_phone = custom_customer_phone or cust[2]
+            c_city = custom_city or cust[3]
+            c_country = custom_country or cust[4]
+            c_prod = custom_product_type or selected_prod[0]
+            c_qty = custom_quantity or random.randint(1, 3)
+            c_stock = custom_paper_stock or selected_prod[3]
+            c_amt = f"{float(custom_amount_raw):.2f}" if custom_amount_raw else f"{random.uniform(28.50, 145.00):.2f}"
+
             sample_payload = {
                 "event": "order.created",
                 "order_id": f"PEECHO-{rand_id}",
                 "priority": chosen_priority,
                 "currency": "EUR",
-                "total_amount": f"{random.uniform(28.50, 145.00):.2f}",
+                "total_amount": c_amt,
                 "carrier": "DHL Express Worldwide",
                 "customer": {
-                    "name": cust[0],
-                    "email": cust[1],
-                    "phone": cust[2],
+                    "name": c_name,
+                    "email": c_email,
+                    "phone": c_phone,
                 },
                 "shipping_address": {
-                    "recipient_name": cust[0],
+                    "recipient_name": c_name,
                     "street": f"{random.randint(12, 180)} Printmakers Way",
-                    "city": cust[3],
+                    "city": c_city,
                     "postal_code": f"{random.randint(1000, 9999)}",
-                    "country": cust[4],
+                    "country": c_country,
                 },
                 "items": [
                     {
                         "item_id": f"ITEM-{rand_id}-1",
-                        "product_type": selected_prod[0],
-                        "quantity": random.randint(1, 3),
+                        "product_type": c_prod,
+                        "quantity": c_qty,
                         "page_count": selected_prod[1],
                         "spine_width_mm": float(selected_prod[2]),
-                        "paper_stock": selected_prod[3],
+                        "paper_stock": c_stock,
                         "pdf_artwork_url": "/artworks/peecho_hardcover_photobook_a4.pdf",
                         "pdf_cover_url": "/artworks/peecho_hardcover_wrap_cover.pdf",
                     }
@@ -202,8 +223,15 @@ class OrderSimulateView(APIView):
                 ("Chloe Dupont", "c.dupont@printify-demo.ca", "+1 514 555 0177", "Montreal", "QC", "H2Y 1C6", "CA"),
             ]
             cust = random.choice(printify_customers)
-            qty = random.randint(1, 3)
-            total_amt = chosen_prod["price"] * qty + Decimal("5.99")
+            p_cust_name = custom_customer_name or cust[0]
+            p_cust_email = custom_customer_email or cust[1]
+            p_cust_phone = custom_customer_phone or cust[2]
+            p_city = custom_city or cust[3]
+            p_country = custom_country or cust[6]
+            p_prod_name = custom_product_type or chosen_prod["name"]
+            p_qty = custom_quantity or random.randint(1, 3)
+            p_stock = custom_paper_stock or chosen_prod["stock"]
+            p_total = Decimal(str(custom_amount_raw)) if custom_amount_raw else (chosen_prod["price"] * p_qty + Decimal("5.99"))
             ext_order_id = f"PF-{rand_id}"
 
             order = Order.objects.create(
@@ -212,23 +240,23 @@ class OrderSimulateView(APIView):
                 is_external_pod=True,
                 external_pod_order_id=ext_order_id,
                 peecho_order_id=None,
-                customer_name=cust[0],
-                customer_email=cust[1],
-                customer_phone=cust[2],
+                customer_name=p_cust_name,
+                customer_email=p_cust_email,
+                customer_phone=p_cust_phone,
                 shipping_address={
-                    "recipient_name": cust[0],
+                    "recipient_name": p_cust_name,
                     "street": f"{random.randint(10, 400)} Fashion Ave",
-                    "city": cust[3],
+                    "city": p_city,
                     "state": cust[4],
                     "postal_code": cust[5],
-                    "country": cust[6],
+                    "country": p_country,
                 },
                 carrier_preference="USPS Priority Mail",
                 status=initial_status,
                 sla_deadline=sla_deadline,
                 sla_priority=sla_priority,
-                total_items_count=qty,
-                total_amount=total_amt,
+                total_items_count=p_qty,
+                total_amount=p_total,
                 currency="USD",
                 peecho_metadata={"source": "printify_api", "shop_id": "1849204", "order_id": ext_order_id},
             )
@@ -236,11 +264,11 @@ class OrderSimulateView(APIView):
             OrderItem.objects.create(
                 order=order,
                 external_item_id=f"PF-ITEM-{rand_id}",
-                product_type=chosen_prod["name"],
-                quantity=qty,
+                product_type=p_prod_name,
+                quantity=p_qty,
                 page_count=1,
                 spine_width_mm=Decimal("0.0"),
-                paper_stock=chosen_prod["stock"],
+                paper_stock=p_stock,
                 pdf_artwork_url=f"https://images-assets.printify.com/orders/{rand_id}/print_artwork.png",
                 pdf_cover_url="",
                 printify_product_id=chosen_prod["product_id"],
@@ -256,7 +284,7 @@ class OrderSimulateView(APIView):
                     "id": ext_order_id,
                     "external_id": order_number,
                     "status": "pending",
-                    "line_items": [{"title": chosen_prod["name"], "quantity": qty, "price": str(chosen_prod["price"])}],
+                    "line_items": [{"title": p_prod_name, "quantity": p_qty, "price": str(chosen_prod["price"])}],
                 },
                 status="PROCESSED",
                 ip_address=client_ip,
@@ -286,8 +314,15 @@ class OrderSimulateView(APIView):
                 ("Kenji Takahashi (Tokyo Creative Lab)", "k.takahashi@creativelab.jp", "+81 3 5555 0142", "Minato-ku", "Tokyo", "105-0001", "JP"),
             ]
             cust = random.choice(custom_customers)
-            qty = chosen_prod[1]
-            total_amt = chosen_prod[2] * qty + Decimal("7.50")
+            c_cust_name = custom_customer_name or cust[0]
+            c_cust_email = custom_customer_email or cust[1]
+            c_cust_phone = custom_customer_phone or cust[2]
+            c_city = custom_city or cust[3]
+            c_country = custom_country or cust[6]
+            c_prod_name = custom_product_type or chosen_prod[0]
+            c_qty = custom_quantity or chosen_prod[1]
+            c_stock = custom_paper_stock or chosen_prod[3]
+            c_total = Decimal(str(custom_amount_raw)) if custom_amount_raw else (chosen_prod[2] * c_qty + Decimal("7.50"))
             ext_order_id = f"API-EXT-{rand_id}"
 
             order = Order.objects.create(
@@ -296,23 +331,23 @@ class OrderSimulateView(APIView):
                 is_external_pod=False,
                 external_pod_order_id=ext_order_id,
                 peecho_order_id=None,
-                customer_name=cust[0],
-                customer_email=cust[1],
-                customer_phone=cust[2],
+                customer_name=c_cust_name,
+                customer_email=c_cust_email,
+                customer_phone=c_cust_phone,
                 shipping_address={
-                    "recipient_name": cust[0],
+                    "recipient_name": c_cust_name,
                     "street": f"{random.randint(10, 200)} High Street",
-                    "city": cust[3],
+                    "city": c_city,
                     "state": cust[4],
                     "postal_code": cust[5],
-                    "country": cust[6],
+                    "country": c_country,
                 },
                 carrier_preference="DPD Express Worldwide",
                 status=initial_status,
                 sla_deadline=sla_deadline,
                 sla_priority=sla_priority,
-                total_items_count=qty,
-                total_amount=total_amt,
+                total_items_count=c_qty,
+                total_amount=c_total,
                 currency="GBP",
                 peecho_metadata={"gateway": "Custom B2B REST Ingestion", "client_id": f"CLIENT-{rand_id % 500 + 100}"},
             )
@@ -320,11 +355,11 @@ class OrderSimulateView(APIView):
             OrderItem.objects.create(
                 order=order,
                 external_item_id=f"ITEM-{rand_id}",
-                product_type=chosen_prod[0],
-                quantity=qty,
+                product_type=c_prod_name,
+                quantity=c_qty,
                 page_count=1,
                 spine_width_mm=Decimal("0.0"),
-                paper_stock=chosen_prod[3],
+                paper_stock=c_stock,
                 pdf_artwork_url=f"https://assets.customgateway.io/prints/{rand_id}/artwork_hires.pdf",
                 pdf_cover_url="",
                 preflight_passed=True,
@@ -354,8 +389,15 @@ class OrderSimulateView(APIView):
                 ("Carlos Rodriguez (Horizon Media)", "crodriguez@horizonmedia.es", "+34 91 555 0198", "Madrid", "Madrid", "28001", "ES"),
             ]
             cust = random.choice(manual_customers)
-            qty = chosen_prod[1]
-            total_amt = chosen_prod[2] * qty + Decimal("4.00")
+            m_cust_name = custom_customer_name or cust[0]
+            m_cust_email = custom_customer_email or cust[1]
+            m_cust_phone = custom_customer_phone or cust[2]
+            m_city = custom_city or cust[3]
+            m_country = custom_country or cust[6]
+            m_prod_name = custom_product_type or chosen_prod[0]
+            m_qty = custom_quantity or chosen_prod[1]
+            m_stock = custom_paper_stock or chosen_prod[3]
+            m_total = Decimal(str(custom_amount_raw)) if custom_amount_raw else (chosen_prod[2] * m_qty + Decimal("4.00"))
 
             order = Order.objects.create(
                 order_number=order_number,
@@ -363,23 +405,23 @@ class OrderSimulateView(APIView):
                 is_external_pod=False,
                 external_pod_order_id=None,
                 peecho_order_id=None,
-                customer_name=cust[0],
-                customer_email=cust[1],
-                customer_phone=cust[2],
+                customer_name=m_cust_name,
+                customer_email=m_cust_email,
+                customer_phone=m_cust_phone,
                 shipping_address={
-                    "recipient_name": cust[0],
+                    "recipient_name": m_cust_name,
                     "street": f"{random.randint(10, 500)} Commercial Center",
-                    "city": cust[3],
+                    "city": m_city,
                     "state": cust[4],
                     "postal_code": cust[5],
-                    "country": cust[6],
+                    "country": m_country,
                 },
                 carrier_preference="Local Courier Dispatch",
                 status=initial_status,
                 sla_deadline=sla_deadline,
                 sla_priority=sla_priority,
-                total_items_count=qty,
-                total_amount=total_amt,
+                total_items_count=m_qty,
+                total_amount=m_total,
                 currency="USD",
                 peecho_metadata={"intake_channel": "In-House CSR Staff", "terminal": "DESK-01"},
             )
@@ -387,11 +429,11 @@ class OrderSimulateView(APIView):
             OrderItem.objects.create(
                 order=order,
                 external_item_id=f"MANUAL-{rand_id}",
-                product_type=chosen_prod[0],
-                quantity=qty,
+                product_type=m_prod_name,
+                quantity=m_qty,
                 page_count=1,
                 spine_width_mm=Decimal("0.0"),
-                paper_stock=chosen_prod[3],
+                paper_stock=m_stock,
                 pdf_artwork_url=f"https://internal-assets.silverpointpod.com/jobs/{rand_id}/print_ready.pdf",
                 pdf_cover_url="",
                 preflight_passed=True,

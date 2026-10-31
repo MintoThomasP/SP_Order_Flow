@@ -83,16 +83,42 @@ export const ordersApi = {
     return res.data;
   },
 
-  // Trigger simulated multi-channel order creation
+  // Trigger multi-channel or manual order creation
   simulateOrder: async (params?: {
     priority?: "RUSH_8H" | "EXPRESS_24H" | "STANDARD_72H";
     source?: "printify" | "peecho" | "custom_api" | "manual";
+    customer_name?: string;
+    customer_email?: string;
+    customer_phone?: string;
+    product_type?: string;
+    paper_stock?: string;
+    quantity?: number;
+    total_amount?: number | string;
+    city?: string;
+    country?: string;
   }): Promise<{ message: string; channel?: string; order: Order; log_status?: string }> => {
     const res = await apiClient.post<{ message: string; channel?: string; order: Order; log_status?: string }>(
       "/orders/simulate/",
       params || {}
     );
     return res.data;
+  },
+
+  // Alias for manual & simulated order creation
+  createOrder: async (params?: {
+    priority?: "RUSH_8H" | "EXPRESS_24H" | "STANDARD_72H";
+    source?: "printify" | "peecho" | "custom_api" | "manual";
+    customer_name?: string;
+    customer_email?: string;
+    customer_phone?: string;
+    product_type?: string;
+    paper_stock?: string;
+    quantity?: number;
+    total_amount?: number | string;
+    city?: string;
+    country?: string;
+  }): Promise<{ message: string; channel?: string; order: Order; log_status?: string }> => {
+    return ordersApi.simulateOrder(params);
   },
 
   // Backwards-compatible Peecho webhook simulation

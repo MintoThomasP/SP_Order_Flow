@@ -13,7 +13,7 @@ export interface TableProps<T> {
   columns: Column<T>[];
   keyExtractor: (item: T) => string;
   isLoading?: boolean;
-  emptyMessage?: string;
+  emptyMessage?: React.ReactNode;
   onRowClick?: (item: T) => void;
   pagination?: PaginationProps;
 }

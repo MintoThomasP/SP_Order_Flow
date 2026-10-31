@@ -36,6 +36,13 @@ import {
   ShieldCheck,
   ChevronRight,
   Maximize2,
+  Plus,
+  User,
+  Mail,
+  Phone,
+  ShoppingBag,
+  DollarSign,
+  MapPin,
 } from "lucide-react";
 import Link from "next/link";
 import { ordersApi, lookupsApi, Order, OrderItem, EntityStatus, UserAuditLog, ArtworkDocument, StaffUser } from "@/services/api";
@@ -183,8 +190,21 @@ export default function OrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [orderModalTab, setOrderModalTab] = useState<"details" | "history">("details");
   const [isSimulateModalOpen, setIsSimulateModalOpen] = useState(false);
+  const [createOrderMode, setCreateOrderMode] = useState<"quick" | "custom">("quick");
   const [simulatePriority, setSimulatePriority] = useState<"RUSH_8H" | "EXPRESS_24H" | "STANDARD_72H">("RUSH_8H");
-  const [simulateSource, setSimulateSource] = useState<"printify" | "peecho" | "custom_api" | "manual">("printify");
+  const [simulateSource, setSimulateSource] = useState<"printify" | "peecho" | "custom_api" | "manual">("manual");
+
+  // Custom Order Fields
+  const [customCustomerName, setCustomCustomerName] = useState("");
+  const [customCustomerEmail, setCustomCustomerEmail] = useState("");
+  const [customCustomerPhone, setCustomCustomerPhone] = useState("");
+  const [customProductType, setCustomProductType] = useState("");
+  const [customPaperStock, setCustomPaperStock] = useState("");
+  const [customQuantity, setCustomQuantity] = useState<number>(1);
+  const [customTotalAmount, setCustomTotalAmount] = useState<string>("");
+  const [customCity, setCustomCity] = useState("");
+  const [customCountry, setCustomCountry] = useState("India");
+
   const [transitionStatusCode, setTransitionStatusCode] = useState("");
   const [transitionComment, setTransitionComment] = useState("");
   const [adminOverrideApproved, setAdminOverrideApproved] = useState(false);
@@ -371,6 +391,15 @@ export default function OrdersPage() {
     mutationFn: (params: {
       priority: "RUSH_8H" | "EXPRESS_24H" | "STANDARD_72H";
       source: "printify" | "peecho" | "custom_api" | "manual";
+      customer_name?: string;
+      customer_email?: string;
+      customer_phone?: string;
+      product_type?: string;
+      paper_stock?: string;
+      quantity?: number;
+      total_amount?: number;
+      city?: string;
+      country?: string;
     }) => ordersApi.simulateOrder(params),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
@@ -378,6 +407,16 @@ export default function OrdersPage() {
       queryClient.invalidateQueries({ queryKey: ["printify-logs"] });
       queryClient.invalidateQueries({ queryKey: ["peecho-logs"] });
       setIsSimulateModalOpen(false);
+      setCustomCustomerName("");
+      setCustomCustomerEmail("");
+      setCustomCustomerPhone("");
+      setCustomProductType("");
+      setCustomPaperStock("");
+      setCustomQuantity(1);
+      setCustomTotalAmount("");
+      setCustomCity("");
+      setCustomCountry("India");
+      setCreateOrderMode("quick");
       if (data.order) {
         setNewOrderAlert(data.order);
         const sourceLabel =
@@ -929,11 +968,11 @@ export default function OrdersPage() {
           </Button>
           <Button
             size="sm"
-            leftIcon={<Zap className="w-3.5 h-3.5 text-amber-300" />}
+            leftIcon={<Plus className="w-3.5 h-3.5 stroke-[2.5]" />}
             onClick={() => setIsSimulateModalOpen(true)}
             className="bg-[#0073EA] hover:bg-[#0060B9] shadow-xs text-white"
           >
-            Create Test Order
+            Create Order
           </Button>
         </div>
       </div>
@@ -1088,21 +1127,31 @@ export default function OrdersPage() {
             ))}
           </div>
 
-          {/* Sort Selector */}
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className="text-slate-400 font-semibold uppercase text-[10px] flex items-center gap-1">
-              <ArrowUpDown className="w-3 h-3" /> Sort:
-            </span>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
-              className="bg-slate-50 border border-slate-200 rounded-md px-2 py-1 text-xs text-slate-700 font-medium"
+          {/* Sort Selector & Quick Create */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="text-slate-400 font-semibold uppercase text-[10px] flex items-center gap-1">
+                <ArrowUpDown className="w-3 h-3" /> Sort:
+              </span>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                className="bg-slate-50 border border-slate-200 rounded-md px-2 py-1 text-xs text-slate-700 font-medium"
+              >
+                <option value="newest">Date Created (Newest First)</option>
+                <option value="sla">Delivery Deadline (Urgent First)</option>
+                <option value="amount">Order Amount (High to Low)</option>
+                <option value="order_number">Order Number (Desc)</option>
+              </select>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => setIsSimulateModalOpen(true)}
+              leftIcon={<Plus className="w-3.5 h-3.5 stroke-[2.5]" />}
+              className="bg-[#0073EA] hover:bg-[#0060B9] text-white text-xs font-semibold shadow-xs"
             >
-              <option value="newest">Date Created (Newest First)</option>
-              <option value="sla">Delivery Deadline (Urgent First)</option>
-              <option value="amount">Order Amount (High to Low)</option>
-              <option value="order_number">Order Number (Desc)</option>
-            </select>
+              Create Order
+            </Button>
           </div>
         </div>
 
@@ -1473,6 +1522,51 @@ export default function OrdersPage() {
         </div>
       )}
 
+      {/* Order Listing Table Action Header Toolbar */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white p-3.5 px-4 rounded-xl border border-slate-200/90 shadow-2xs">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <PackageCheck className="w-4 h-4 text-[#0073EA]" />
+            <h3 className="text-sm font-bold text-slate-900 tracking-tight">
+              {orderQueueTab === "pending"
+                ? "Pending Station Queue"
+                : orderQueueTab === "processed"
+                ? "Processed Orders Archive"
+                : "All Orders Listing"}
+            </h3>
+          </div>
+          <span className="text-slate-300">•</span>
+          <span className="text-[11px] font-mono font-bold text-[#0073EA] bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200">
+            {activeDisplayOrders.length} {activeDisplayOrders.length === 1 ? "Record" : "Records"}
+          </span>
+          {ordersLoading && (
+            <span className="text-[11px] text-slate-400 font-medium flex items-center gap-1.5">
+              <RefreshCw className="w-3 h-3 animate-spin text-[#0073EA]" /> Live Updating...
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refetchOrders()}
+            leftIcon={<RefreshCw className={`w-3.5 h-3.5 ${ordersLoading ? "animate-spin text-[#0073EA]" : ""}`} />}
+            className="text-xs"
+          >
+            Refresh
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => setIsSimulateModalOpen(true)}
+            leftIcon={<Plus className="w-3.5 h-3.5 stroke-[2.5]" />}
+            className="bg-[#0073EA] hover:bg-[#0060B9] text-white text-xs font-semibold shadow-xs"
+          >
+            Create Order
+          </Button>
+        </div>
+      </div>
+
       {/* Main Orders Table */}
       <Card noPadding={true}>
         <Table
@@ -1481,13 +1575,62 @@ export default function OrdersPage() {
           keyExtractor={(ord) => ord.id}
           isLoading={ordersLoading}
           emptyMessage={
-            effectiveRestrictedMatch
-              ? `You have no access to this job / this order (${effectiveRestrictedMatch.order_number}). Current stage: ${effectiveRestrictedMatch.status_name} (Restricted for your role).`
-              : orderQueueTab === "pending"
-              ? `All caught up! No pending orders awaiting action in ${wsQueue.stationName}.`
-              : orderQueueTab === "processed"
-              ? `No processed orders found in this station archive.`
-              : `No orders found matching the active filters.`
+            effectiveRestrictedMatch ? (
+              <div className="py-6 flex flex-col items-center justify-center text-center">
+                <Lock className="w-8 h-8 text-amber-500 mb-2" />
+                <p className="text-sm font-bold text-slate-800">
+                  Access Restricted ({effectiveRestrictedMatch.order_number})
+                </p>
+                <p className="text-xs text-slate-500 max-w-sm mt-1">
+                  Current stage is {effectiveRestrictedMatch.status_name}, which is restricted for your role.
+                </p>
+              </div>
+            ) : (
+              <div className="py-8 flex flex-col items-center justify-center text-center">
+                <PackageCheck className="w-10 h-10 text-slate-300 mb-2.5" />
+                <p className="text-sm font-bold text-slate-800">
+                  {orderQueueTab === "pending"
+                    ? `No Pending Orders Awaiting Action`
+                    : orderQueueTab === "processed"
+                    ? `No Processed Orders in Station Archive`
+                    : `No Orders Found`}
+                </p>
+                <p className="text-xs text-slate-500 max-w-sm mt-1 mb-4">
+                  {orderQueueTab === "pending"
+                    ? `All caught up! No incoming jobs currently waiting in ${wsQueue.stationName}.`
+                    : orderQueueTab === "processed"
+                    ? `No historical jobs found for this station filter.`
+                    : `No orders match your active search or filter criteria.`}
+                </p>
+                <div className="flex items-center gap-2">
+                  {(sourceFilter !== "ALL" || urgencyFilter !== "" || statusFilter !== "ALL" || dateFilter !== "ALL" || searchQuery) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setSourceFilter("ALL");
+                        setUrgencyFilter("");
+                        setStatusFilter("ALL");
+                        setDateFilter("ALL");
+                        setSearchQuery("");
+                        setCurrentPage(1);
+                      }}
+                      className="text-xs"
+                    >
+                      Clear Filters
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    onClick={() => setIsSimulateModalOpen(true)}
+                    leftIcon={<Plus className="w-3.5 h-3.5 stroke-[2.5]" />}
+                    className="bg-[#0073EA] hover:bg-[#0060B9] text-white text-xs font-semibold shadow-xs"
+                  >
+                    Create Order
+                  </Button>
+                </div>
+              </div>
+            )
           }
           pagination={{
             currentPage,
@@ -1503,12 +1646,12 @@ export default function OrdersPage() {
         />
       </Card>
 
-      {/* MODAL: CREATE MULTI-CHANNEL ORDER */}
+      {/* MODAL: CREATE MULTI-CHANNEL OR CUSTOM ORDER */}
       <Modal
         isOpen={isSimulateModalOpen}
         onClose={() => setIsSimulateModalOpen(false)}
-        title="Create Order"
-        description="Select the origin channel and SLA target to simulate or ingest an inbound order."
+        title="Create New Order"
+        description="Ingest an inbound POD order via preset channels or enter custom customer & print specifications."
         footer={
           <>
             <Button variant="outline" size="sm" onClick={() => setIsSimulateModalOpen(false)}>
@@ -1517,20 +1660,65 @@ export default function OrdersPage() {
             <Button
               size="sm"
               isLoading={simulateMutation.isPending}
-              onClick={() =>
-                simulateMutation.mutate({
-                  priority: simulatePriority,
-                  source: simulateSource,
-                })
-              }
+              onClick={() => {
+                if (createOrderMode === "custom") {
+                  simulateMutation.mutate({
+                    priority: simulatePriority,
+                    source: simulateSource,
+                    customer_name: customCustomerName.trim() || undefined,
+                    customer_email: customCustomerEmail.trim() || undefined,
+                    customer_phone: customCustomerPhone.trim() || undefined,
+                    product_type: customProductType.trim() || undefined,
+                    paper_stock: customPaperStock.trim() || undefined,
+                    quantity: customQuantity > 0 ? Number(customQuantity) : 1,
+                    total_amount: customTotalAmount ? parseFloat(customTotalAmount) : undefined,
+                    city: customCity.trim() || undefined,
+                    country: customCountry.trim() || undefined,
+                  });
+                } else {
+                  simulateMutation.mutate({
+                    priority: simulatePriority,
+                    source: simulateSource,
+                  });
+                }
+              }}
               className="bg-[#0073EA] hover:bg-[#0060B9]"
+              leftIcon={<Plus className="w-3.5 h-3.5 stroke-[2.5]" />}
             >
-              Create Order
+              {createOrderMode === "custom" ? "Submit Custom Order" : "Ingest Preset Order"}
             </Button>
           </>
         }
       >
         <div className="space-y-4 text-xs">
+          {/* Mode Switcher Tabs */}
+          <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-xl border border-slate-200">
+            <button
+              type="button"
+              onClick={() => setCreateOrderMode("quick")}
+              className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                createOrderMode === "quick"
+                  ? "bg-white text-[#0073EA] shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-500" />
+              <span>Quick Channel Preset</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setCreateOrderMode("custom")}
+              className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                createOrderMode === "custom"
+                  ? "bg-white text-[#0073EA] shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5 text-indigo-500" />
+              <span>Custom Order Details</span>
+            </button>
+          </div>
+
           {/* Channel Selector */}
           <div>
             <label className="block font-semibold text-slate-700 mb-1.5">
@@ -1578,7 +1766,7 @@ export default function OrdersPage() {
                     key={channel.id}
                     type="button"
                     onClick={() => setSimulateSource(channel.id as any)}
-                    className={`p-3 rounded-xl border text-left transition-all ${
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
                       isSelected
                         ? channel.activeBorder
                         : "border-slate-200 bg-slate-50/50 hover:bg-slate-50"
@@ -1604,15 +1792,15 @@ export default function OrdersPage() {
             </label>
             <div className="grid grid-cols-3 gap-2.5">
               {[
-                { id: "RUSH_8H", name: "Rush", desc: "8-Hour Target", badge: "danger" },
-                { id: "EXPRESS_24H", name: "Express", desc: "24-Hour Target", badge: "warning" },
-                { id: "STANDARD_72H", name: "Standard", desc: "72-Hour Target", badge: "neutral" },
+                { id: "RUSH_8H", name: "Rush", desc: "8-Hour Target" },
+                { id: "EXPRESS_24H", name: "Express", desc: "24-Hour Target" },
+                { id: "STANDARD_72H", name: "Standard", desc: "72-Hour Target" },
               ].map((tier) => (
                 <button
                   key={tier.id}
                   type="button"
                   onClick={() => setSimulatePriority(tier.id as any)}
-                  className={`p-3 rounded-xl border text-left transition-all ${
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
                     simulatePriority === tier.id
                       ? "border-[#0073EA] bg-blue-50/60 ring-1 ring-[#0073EA]"
                       : "border-slate-200 bg-slate-50/50 hover:bg-slate-50"
@@ -1625,40 +1813,177 @@ export default function OrdersPage() {
             </div>
           </div>
 
-          {/* Dynamic Summary */}
-          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1 font-mono text-[11px] text-slate-600">
-            <p className="font-semibold text-slate-700 font-sans">Automated Steps on Order Creation:</p>
-            {simulateSource === "printify" && (
-              <>
-                <p>✓ Generates Printify external order ID (e.g. PF-928174)</p>
-                <p>✓ Assigns Printify catalog product & variant mappings</p>
-                <p>✓ Creates Printify Payload Log entry for audit</p>
-                <p>✓ Sets SLA deadline and initial Received status</p>
-              </>
-            )}
-            {simulateSource === "peecho" && (
-              <>
-                <p>✓ Simulates inbound Peecho webhook payload</p>
-                <p>✓ Ingests photobook / magazine line items & artwork URLs</p>
-                <p>✓ Records SHA-256 payload log in Peecho Ingestion Logs</p>
-                <p>✓ Sets SLA deadline and initial Received status</p>
-              </>
-            )}
-            {simulateSource === "custom_api" && (
-              <>
-                <p>✓ Simulates B2B REST client payload ingestion</p>
-                <p>✓ Attaches external API reference ID & custom artwork specs</p>
-                <p>✓ Sets SLA deadline and initial Received status</p>
-              </>
-            )}
-            {simulateSource === "manual" && (
-              <>
-                <p>✓ Simulates shop-floor walk-in / CSR internal order ticket</p>
-                <p>✓ Provisions in-house printing & finishing specifications</p>
-                <p>✓ Sets SLA deadline and initial Received status</p>
-              </>
-            )}
-          </div>
+          {/* If Custom Mode: Display form fields for customer & product specifications */}
+          {createOrderMode === "custom" ? (
+            <div className="space-y-3 pt-2 border-t border-slate-200">
+              <h4 className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-[#0073EA]" />
+                <span>Customer & Delivery Information</span>
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Customer Name *
+                  </label>
+                  <div className="relative">
+                    <User className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={customCustomerName}
+                      onChange={(e) => setCustomCustomerName(e.target.value)}
+                      placeholder="e.g. Ramesh Patel"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-2.5 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0073EA]/20 focus:border-[#0073EA]"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Customer Email
+                  </label>
+                  <div className="relative">
+                    <Mail className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="email"
+                      value={customCustomerEmail}
+                      onChange={(e) => setCustomCustomerEmail(e.target.value)}
+                      placeholder="e.g. ramesh@example.com"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-2.5 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0073EA]/20 focus:border-[#0073EA]"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Phone Number
+                  </label>
+                  <div className="relative">
+                    <Phone className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="tel"
+                      value={customCustomerPhone}
+                      onChange={(e) => setCustomCustomerPhone(e.target.value)}
+                      placeholder="e.g. +91 98765 43210"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-2.5 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0073EA]/20 focus:border-[#0073EA]"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Shipping City
+                  </label>
+                  <div className="relative">
+                    <MapPin className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={customCity}
+                      onChange={(e) => setCustomCity(e.target.value)}
+                      placeholder="e.g. Mumbai / Bangalore"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-2.5 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0073EA]/20 focus:border-[#0073EA]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <h4 className="font-bold text-slate-900 text-xs flex items-center gap-1.5 pt-2 border-t border-slate-100">
+                <ShoppingBag className="w-3.5 h-3.5 text-[#0073EA]" />
+                <span>Product & Print Specifications</span>
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Product Title / Type
+                  </label>
+                  <input
+                    type="text"
+                    value={customProductType}
+                    onChange={(e) => setCustomProductType(e.target.value)}
+                    placeholder="e.g. Hardcover Photobook A4 / Cotton Tee"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0073EA]/20 focus:border-[#0073EA]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Paper Stock / Material
+                  </label>
+                  <input
+                    type="text"
+                    value={customPaperStock}
+                    onChange={(e) => setCustomPaperStock(e.target.value)}
+                    placeholder="e.g. 300 GSM Silk Matte / 170 GSM Gloss"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0073EA]/20 focus:border-[#0073EA]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Quantity
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={customQuantity}
+                    onChange={(e) => setCustomQuantity(parseInt(e.target.value) || 1)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0073EA]/20 focus:border-[#0073EA]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Total Amount (₹)
+                  </label>
+                  <div className="relative">
+                    <DollarSign className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={customTotalAmount}
+                      onChange={(e) => setCustomTotalAmount(e.target.value)}
+                      placeholder="e.g. 1499.00"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-2.5 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0073EA]/20 focus:border-[#0073EA]"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Dynamic Summary for Quick Preset Mode */
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1 font-mono text-[11px] text-slate-600">
+              <p className="font-semibold text-slate-700 font-sans">Automated Steps on Order Creation:</p>
+              {simulateSource === "printify" && (
+                <>
+                  <p>✓ Generates Printify external order ID (e.g. PF-928174)</p>
+                  <p>✓ Assigns Printify catalog product & variant mappings</p>
+                  <p>✓ Creates Printify Payload Log entry for audit</p>
+                  <p>✓ Sets SLA deadline and initial Received status</p>
+                </>
+              )}
+              {simulateSource === "peecho" && (
+                <>
+                  <p>✓ Simulates inbound Peecho webhook payload</p>
+                  <p>✓ Ingests photobook / magazine line items & artwork URLs</p>
+                  <p>✓ Records SHA-256 payload log in Peecho Ingestion Logs</p>
+                  <p>✓ Sets SLA deadline and initial Received status</p>
+                </>
+              )}
+              {simulateSource === "custom_api" && (
+                <>
+                  <p>✓ Simulates B2B REST client payload ingestion</p>
+                  <p>✓ Attaches external API reference ID & custom artwork specs</p>
+                  <p>✓ Sets SLA deadline and initial Received status</p>
+                </>
+              )}
+              {simulateSource === "manual" && (
+                <>
+                  <p>✓ Simulates shop-floor walk-in / CSR internal order ticket</p>
+                  <p>✓ Provisions in-house printing & finishing specifications</p>
+                  <p>✓ Sets SLA deadline and initial Received status</p>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </Modal>
 
