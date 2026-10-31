@@ -24,10 +24,14 @@ import {
   Clock,
   X,
   RefreshCw,
+  Volume2,
+  VolumeX,
+  Radio,
 } from "lucide-react";
 import { NAVIGATION_ITEMS } from "./navigation-config";
 import { authApi } from "@/services/api";
 import { useNotifications, AppNotification } from "@/context/notification-context";
+import { useLiveEvents } from "@/context/live-events-context";
 
 export const Header: React.FC = () => {
   const pathname = usePathname();
@@ -48,6 +52,14 @@ export const Header: React.FC = () => {
     clearNotification,
     clearAll,
   } = useNotifications();
+
+  const {
+    isConnected,
+    isMuted,
+    toggleSound,
+    testSound,
+    simulateTestOrder,
+  } = useLiveEvents();
 
   useEffect(() => {
     try {
@@ -141,12 +153,59 @@ export const Header: React.FC = () => {
       </div>
 
       {/* Global Actions */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
+        {/* Live Auto-Sync Status Badge */}
+        <div
+          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-50 border border-slate-200/90 text-[11px] font-medium shadow-2xs select-none"
+          title={
+            isConnected
+              ? "Live Auto-Sync Active: Order status changes and activities update instantly across users without refresh"
+              : "Connecting to real-time auto-sync..."
+          }
+        >
+          <span className="relative flex h-2 w-2">
+            <span
+              className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                isConnected ? "bg-emerald-400" : "bg-amber-400"
+              }`}
+            />
+            <span
+              className={`relative inline-flex rounded-full h-2 w-2 ${
+                isConnected ? "bg-emerald-500" : "bg-amber-500"
+              }`}
+            />
+          </span>
+          <span className="text-slate-700 font-semibold text-[10.5px]">
+            {isConnected ? "Auto-Sync Live" : "Connecting..."}
+          </span>
+        </div>
+
+        {/* Sound Toggle Button */}
+        <button
+          onClick={toggleSound}
+          className={`p-2 rounded-xl transition-all cursor-pointer ${
+            isMuted
+              ? "text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              : "text-[#0073EA] bg-blue-50/70 hover:bg-blue-100/70"
+          }`}
+          title={
+            isMuted
+              ? "Sound alerts are MUTED. Click to unmute."
+              : "Sound alerts are ACTIVE. Click to mute sound."
+          }
+        >
+          {isMuted ? (
+            <VolumeX className="w-4 h-4 text-slate-400" />
+          ) : (
+            <Volume2 className="w-4 h-4 text-[#0073EA]" />
+          )}
+        </button>
+
         {/* Notifications Popover */}
         <div className="relative" ref={notifRef}>
           <button
             onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
-            className={`relative p-2 rounded-xl transition-all ${
+            className={`relative p-2 rounded-xl transition-all cursor-pointer ${
               isNotificationsOpen
                 ? "bg-blue-50 text-[#0073EA]"
                 : "text-slate-500 hover:text-slate-800 hover:bg-slate-100"
@@ -162,7 +221,7 @@ export const Header: React.FC = () => {
           </button>
 
           {isNotificationsOpen && (
-            <div className="absolute right-0 mt-2 w-96 sm:w-[420px] bg-white border border-slate-200/90 rounded-2xl shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="absolute right-0 mt-2 w-96 sm:w-[440px] bg-white border border-slate-200/90 rounded-2xl shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col max-h-[85vh]">
               {/* Header */}
               <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
                 <div className="flex items-center gap-2">
@@ -176,6 +235,24 @@ export const Header: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => testSound()}
+                    className="px-2 py-1 text-[10px] font-semibold text-slate-600 hover:text-[#0073EA] hover:bg-blue-50 rounded-md transition-colors flex items-center gap-1 cursor-pointer"
+                    title="Play test audio chime"
+                  >
+                    <Volume2 className="w-3 h-3 text-[#0073EA]" />
+                    <span>Test Sound</span>
+                  </button>
+                  <button
+                    onClick={async () => {
+                      await simulateTestOrder();
+                    }}
+                    className="px-2 py-1 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-50 rounded-md transition-colors flex items-center gap-1 cursor-pointer"
+                    title="Simulate incoming order"
+                  >
+                    <Zap className="w-3 h-3 text-emerald-600" />
+                    <span>+ Sim Order</span>
+                  </button>
                   {unreadCount > 0 && (
                     <button
                       onClick={markAllAsRead}
@@ -183,7 +260,7 @@ export const Header: React.FC = () => {
                       title="Mark all as read"
                     >
                       <CheckCheck className="w-3 h-3" />
-                      <span>Mark all read</span>
+                      <span>Read all</span>
                     </button>
                   )}
                   {notifications.length > 0 && (

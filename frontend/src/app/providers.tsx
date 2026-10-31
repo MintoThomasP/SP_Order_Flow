@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider, MutationCache } from "@tanstack/react
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { LoaderProvider } from "@/context/loader-context";
 import { NotificationProvider, showErrorToast } from "@/context/notification-context";
+import { LiveEventsProvider } from "@/context/live-events-context";
 import { TopLoader } from "@/components/layout/top-loader";
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -35,12 +36,14 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <NotificationProvider>
-        <LoaderProvider>
-          <Suspense fallback={null}>
-            <TopLoader />
-          </Suspense>
-          {children}
-        </LoaderProvider>
+        <LiveEventsProvider>
+          <LoaderProvider>
+            <Suspense fallback={null}>
+              <TopLoader />
+            </Suspense>
+            {children}
+          </LoaderProvider>
+        </LiveEventsProvider>
       </NotificationProvider>
       <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>

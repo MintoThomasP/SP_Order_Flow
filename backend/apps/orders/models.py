@@ -194,6 +194,35 @@ class Order(BaseModel):
         verbose_name_plural = "POD Orders"
         ordering = ["-created_at"]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._initial_status_id = self.status_id
+        self._initial_status_name = self.status.name if self.status else ""
+
+    def save(self, *args, **kwargs):
+        is_new = self._state.adding
+        super().save(*args, **kwargs)
+
+        try:
+            from apps.core.services.broadcaster import broadcast_order_created, broadcast_status_change
+            if is_new:
+                broadcast_order_created(self, actor_name=f"{self.get_order_source_display()} Gateway")
+            elif hasattr(self, "_initial_status_id") and self._initial_status_id and self._initial_status_id != self.status_id:
+                old_name = getattr(self, "_initial_status_name", "") or "Previous Status"
+                new_code = self.status.code if self.status else "UNKNOWN"
+                new_name = self.status.name if self.status else "Updated Status"
+                broadcast_status_change(
+                    order=self,
+                    old_status_name=old_name,
+                    new_status_code=new_code,
+                    new_status_name=new_name,
+                    actor_name="Operations Staff",
+                )
+                self._initial_status_id = self.status_id
+                self._initial_status_name = new_name
+        except Exception:
+            pass
+
     def __str__(self):
         status_name = self.status.name if self.status else "Unassigned"
         return f"{self.order_number} [Peecho: {self.peecho_order_id}] - {status_name}"
