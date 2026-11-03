@@ -2,6 +2,7 @@
 Production settings with PostgreSQL / MySQL support and hardened security.
 """
 import os
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 from .base import *
@@ -51,9 +52,17 @@ if "mysql" in DB_ENGINE.lower():
         "init_command": "SET sql_mode='STRICT_TRANS_TABLES'",
     }
 
-DATABASES = {
-    "default": db_config
-}
+if "test" in sys.argv and os.getenv("TEST_WITH_MYSQL", "0") != "1":
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": ":memory:",
+        }
+    }
+else:
+    DATABASES = {
+        "default": db_config
+    }
 
 # Production CORS & CSRF settings
 CORS_ALLOW_ALL_ORIGINS = False

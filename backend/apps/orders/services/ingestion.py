@@ -67,7 +67,10 @@ def verify_peecho_webhook_request(request, force_sandbox: bool = False) -> dict:
     if provided_sig.lower().startswith("sha256="):
         provided_sig = provided_sig.split("=", 1)[1].strip()
 
-    raw_body = request.body or b""
+    try:
+        raw_body = request.body or b""
+    except Exception:
+        raw_body = json.dumps(request.data).encode("utf-8") if hasattr(request, "data") else b""
 
     staging_secret = getattr(settings, "PEECHO_STAGING_SECRET_KEY", "") or ""
     prod_secret = getattr(settings, "PEECHO_PRODUCTION_SECRET_KEY", "") or ""

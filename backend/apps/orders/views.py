@@ -51,6 +51,8 @@ class PeechoWebhookView(APIView):
     force_sandbox = False
 
     def post(self, request):
+        # Read raw bytes before DRF consumes the stream via request.data (prevents RawPostDataException on Gunicorn)
+        _ = request.body
         payload = request.data
         if not isinstance(payload, dict):
             return Response(
