@@ -1593,14 +1593,14 @@ export default function PODIntegrationsPage() {
                     <div className="flex items-center justify-between text-[11px] text-slate-500 font-mono bg-white px-2.5 py-1.5 rounded-lg border border-slate-200/80">
                       <span className="truncate">
                         {peechoConfigData?.staging_webhook_url ||
-                          "https://staging-orderflow.silverpointprint.com/api/v1/peecho/webhook/"}
+                          "https://orderflow.silverpointprint.com/api/v1/peecho/webhook/"}
                       </span>
                       <button
                         type="button"
                         onClick={() =>
                           handleCopy(
                             peechoConfigData?.staging_webhook_url ||
-                              "https://staging-orderflow.silverpointprint.com/api/v1/peecho/webhook/",
+                              "https://orderflow.silverpointprint.com/api/v1/peecho/webhook/",
                             "staging_webhook_url"
                           )
                         }

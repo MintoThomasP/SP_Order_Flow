@@ -10,18 +10,18 @@
 
 - **Platform Stack**: Django REST Framework (Backend) & Next.js (Frontend) — Single Domain Architecture hosted on AWS with S3 storage.
 
-| Environment | Webhook Endpoint URL | Security & Behavior |
+| Environment | Webhook Endpoint URL | Security & Key Routing |
 | :--- | :--- | :--- |
-| **Production** | `https://orderflow.silverpointprint.com/api/v1/peecho/webhook/` | HMAC-SHA256 (`X-Peecho-Signature`) + TLS 1.3 (`is_sandbox = False`) |
-| **Staging (Sandbox)** | `https://staging.orderflow.silverpointprint.com/api/v1/peecho/webhook/` | Sandbox Secret Key Validation (`is_sandbox = True`, isolated from live press & billing) |
+| **Production (Live)** | `https://orderflow.silverpointprint.com/api/v1/peecho/webhook/` | Signed with `PEECHO_PRODUCTION_SECRET_KEY` in `X-Peecho-Signature` (`is_sandbox = False`) |
+| **Staging (Sandbox)** | `https://orderflow.silverpointprint.com/api/v1/peecho/webhook/` | Signed with `PEECHO_STAGING_SECRET_KEY` in `X-Peecho-Signature` (`is_sandbox = True`, isolated from live press & billing) |
 
 ---
 
 ## 2. Simple Workflow Overview (5 Steps)
 
 1. **Step 1: Ingestion**
-   - Peecho sends orders in real time via the Inbound Webhook.
-   - Orders arriving via the Staging URL are automatically tagged with `is_sandbox = True` (`TEST ORDER`) to keep them isolated from live production queues and financial billing.
+   - Peecho sends orders in real time via the single Inbound Webhook (`https://orderflow.silverpointprint.com/api/v1/peecho/webhook/`).
+   - Orders authenticated with `PEECHO_STAGING_SECRET_KEY` are automatically tagged with `is_sandbox = True` (`TEST_ORDER`) to keep them isolated from live production queues and financial billing, while orders authenticated with `PEECHO_PRODUCTION_SECRET_KEY` enter live production (`is_sandbox = False`).
 2. **Step 2: Prepress**
    - Print-ready interior and cover PDFs are downloaded from AWS S3 and checked for DPI resolution, trim size, spine width, and bleed margins.
 3. **Step 3: Batching & Job Tickets**

@@ -173,7 +173,7 @@ PEECHO_PRODUCTION_WEBHOOK_URL = os.getenv(
 )
 PEECHO_STAGING_WEBHOOK_URL = os.getenv(
     "PEECHO_STAGING_WEBHOOK_URL",
-    "https://staging-orderflow.silverpointprint.com/api/v1/peecho/webhook/",
+    "https://orderflow.silverpointprint.com/api/v1/peecho/webhook/",
 )
 PEECHO_PRODUCTION_SECRET_KEY = os.getenv(
     "PEECHO_PRODUCTION_SECRET_KEY",
