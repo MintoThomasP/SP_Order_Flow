@@ -122,45 +122,26 @@ class PeechoStagingAndProductionWebhookTests(TestCase):
         log = PeechoPayloadLog.objects.get(peecho_order_id="PEECHO-HACK-999")
         self.assertEqual(log.status, "INVALID_AUTH")
 
-    def test_generate_keys_from_our_end_and_admin_side_peecho_keys(self):
-        # 1. Generate keys from our end -> auto-saved to .env and config
-        gen_resp = self.client.post(
-            "/api/v1/peecho/config/",
-            {"action": "generate_keys"},
-            format="json",
-        )
-        self.assertEqual(gen_resp.status_code, 200)
-        self.assertEqual(gen_resp.data["config"]["secret_key_source"], "SILVERPOINT_GENERATED")
-        self.assertTrue(gen_resp.data["config"]["production_secret_key"].startswith("sp_live_"))
-        self.assertTrue(gen_resp.data["config"]["staging_secret_key"].startswith("sp_stg_"))
+    def test_env_secret_keys_are_read_only_from_admin(self):
+        # Verify GET returns the .env secret keys
+        get_resp = self.client.get("/api/v1/peecho/config/")
+        self.assertEqual(get_resp.status_code, 200)
+        orig_prod_key = get_resp.data["production_secret_key"]
+        orig_stg_key = get_resp.data["staging_secret_key"]
+        self.assertTrue(len(orig_prod_key) > 0)
+        self.assertTrue(len(orig_stg_key) > 0)
 
-        # 2. Save keys provided by Peecho from the Admin side
-        admin_prod_key = "peecho_issued_prod_secret_key_998877"
-        admin_stg_key = "peecho_issued_staging_secret_key_112233"
+        # Attempting to overwrite production_secret_key / staging_secret_key from Admin is ignored
         save_resp = self.client.post(
             "/api/v1/peecho/config/",
             {
-                "production_secret_key": admin_prod_key,
-                "staging_secret_key": admin_stg_key,
+                "production_secret_key": "attempted_admin_override_prod",
+                "staging_secret_key": "attempted_admin_override_stg",
             },
             format="json",
         )
         self.assertEqual(save_resp.status_code, 200)
-        self.assertEqual(save_resp.data["config"]["secret_key_source"], "PEECHO_ADMIN")
-        self.assertEqual(save_resp.data["config"]["production_secret_key"], admin_prod_key)
-        self.assertEqual(save_resp.data["config"]["staging_secret_key"], admin_stg_key)
-
-        # Verify webhook authenticates with the Admin-saved Peecho key
-        payload = {"event": "order.created", "order_id": "PEECHO-ADMIN-KEY-3001"}
-        raw_bytes, signature = self._sign_payload(payload, admin_prod_key)
-        wh_resp = self.client.generic(
-            "POST",
-            "/api/v1/peecho/webhook/",
-            data=raw_bytes,
-            content_type="application/json",
-            HTTP_HOST="orderflow.silverpointprint.com",
-            HTTP_X_PEECHO_SIGNATURE=signature,
-        )
-        self.assertEqual(wh_resp.status_code, 201)
+        self.assertEqual(save_resp.data["config"]["production_secret_key"], orig_prod_key)
+        self.assertEqual(save_resp.data["config"]["staging_secret_key"], orig_stg_key)
 
 

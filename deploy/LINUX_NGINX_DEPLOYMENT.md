@@ -97,8 +97,8 @@ Paste and customize your backend `.env`:
 DJANGO_SETTINGS_MODULE=config.settings.production
 DJANGO_SECRET_KEY=generate_a_random_64_character_string_here
 DEBUG=False
-ALLOWED_HOSTS=yourdomain.com,www.yourdomain.com,YOUR_SERVER_IP,127.0.0.1,localhost
-CORS_ALLOWED_ORIGINS=https://yourdomain.com,http://yourdomain.com
+ALLOWED_HOSTS=orderflow.silverpointprint.com,staging.orderflow.silverpointprint.com,127.0.0.1,localhost
+CORS_ALLOWED_ORIGINS=https://orderflow.silverpointprint.com,http://orderflow.silverpointprint.com,https://staging.orderflow.silverpointprint.com,http://staging.orderflow.silverpointprint.com
 
 # MySQL Connection
 DB_ENGINE=django.db.backends.mysql
@@ -201,7 +201,7 @@ sudo systemctl restart nginx
 
 ```bash
 sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com
+sudo certbot --nginx -d orderflow.silverpointprint.com -d staging.orderflow.silverpointprint.com
 ```
 
 Certbot automatically configures SSL in `/etc/nginx/sites-available/silverpoint` and sets up automatic certificate renewal.

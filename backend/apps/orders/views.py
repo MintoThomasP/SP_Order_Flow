@@ -1028,37 +1028,9 @@ class PeechoConfigView(APIView):
 
     def post(self, request):
         config = PeechoIntegrationConfig.get_active()
-
-        # Case 1: Generated from our end -> auto-generate cryptographic keys and write directly to .env
-        if request.data.get("action") == "generate_keys":
-            gen_res = config.generate_keys_from_our_end(sync_env=True)
-            log_staff_action(
-                user=request.user if request.user.is_authenticated else None,
-                action="SYSTEM_CONFIG_CHANGE",
-                resource_type="PEECHO_CONFIG",
-                resource_id="CONFIG",
-                details={
-                    "action": "generate_keys_from_our_end",
-                    "updated_env_files": gen_res["updated_env_files"],
-                },
-                request=request,
-            )
-            return Response(
-                {
-                    "message": (
-                        f"Generated new Production & Staging secret keys and automatically saved to "
-                        f"{', '.join(gen_res['updated_env_files']) or '.env'}."
-                    ),
-                    "config": PeechoIntegrationConfigSerializer(config, context={"request": request}).data,
-                    "generated_keys": gen_res,
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        # Case 2: Entered from Peecho via Admin side -> save in database config (and keep .env in sync)
         data = dict(request.data)
-        if data.get("production_secret_key") or data.get("staging_secret_key"):
-            data["secret_key_source"] = data.get("secret_key_source", "PEECHO_ADMIN")
+        data.pop("production_secret_key", None)
+        data.pop("staging_secret_key", None)
 
         serializer = PeechoIntegrationConfigSerializer(
             config,
@@ -1069,20 +1041,13 @@ class PeechoConfigView(APIView):
         serializer.is_valid(raise_exception=True)
         saved_config = serializer.save()
 
-        if "production_secret_key" in request.data or "staging_secret_key" in request.data:
-            PeechoIntegrationConfig.sync_keys_to_env_files(
-                saved_config.production_secret_key,
-                saved_config.staging_secret_key,
-            )
-
         log_staff_action(
             user=request.user if request.user.is_authenticated else None,
             action="SYSTEM_CONFIG_CHANGE",
             resource_type="PEECHO_CONFIG",
             resource_id="CONFIG",
             details={
-                "updated_fields": list(request.data.keys()),
-                "secret_key_source": saved_config.secret_key_source,
+                "updated_fields": list(data.keys()),
             },
             request=request,
         )

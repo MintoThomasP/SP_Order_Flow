@@ -214,12 +214,15 @@ class PeechoIntegrationConfigSerializer(serializers.ModelSerializer):
             "last_connection_status",
             "updated_at",
         ]
+        read_only_fields = [
+            "production_secret_key",
+            "staging_secret_key",
+            "secret_key_source",
+        ]
         extra_kwargs = {
             "api_key": {"write_only": True, "required": False},
             "secret_key": {"write_only": True, "required": False},
             "webhook_secret": {"write_only": True, "required": False},
-            "production_secret_key": {"required": False},
-            "staging_secret_key": {"required": False},
         }
 
     def get_api_key_masked(self, obj):
