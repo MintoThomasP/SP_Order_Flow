@@ -48,6 +48,8 @@ def verify_peecho_webhook_request(request, force_sandbox: bool = False) -> dict:
 
     is_staging_host = (
         host.startswith("staging.")
+        or host.startswith("staging-")
+        or "staging-orderflow.silverpointprint.com" in host
         or "staging.orderflow.silverpointprint.com" in host
         or "staging-pod." in host
     )

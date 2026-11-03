@@ -12,6 +12,7 @@ ALLOWED_HOSTS = [
     "testserver",
     "[::1]",
     "orderflow.silverpointprint.com",
+    "staging-orderflow.silverpointprint.com",
     "staging.orderflow.silverpointprint.com",
 ]
 

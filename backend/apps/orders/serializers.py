@@ -272,7 +272,7 @@ class PeechoIntegrationConfigSerializer(serializers.ModelSerializer):
         return getattr(
             settings,
             "PEECHO_STAGING_WEBHOOK_URL",
-            "https://staging.orderflow.silverpointprint.com/api/v1/peecho/webhook/",
+            "https://staging-orderflow.silverpointprint.com/api/v1/peecho/webhook/",
         )
 
 

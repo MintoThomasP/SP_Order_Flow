@@ -24,7 +24,7 @@ ALLOWED_HOSTS = [
     for host in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
     if host.strip()
 ]
-for _h in ("127.0.0.1", "localhost", "orderflow.silverpointprint.com", "staging.orderflow.silverpointprint.com"):
+for _h in ("127.0.0.1", "localhost", "orderflow.silverpointprint.com", "staging-orderflow.silverpointprint.com", "staging.orderflow.silverpointprint.com"):
     if _h not in ALLOWED_HOSTS:
         ALLOWED_HOSTS.append(_h)
 

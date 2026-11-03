@@ -71,7 +71,7 @@ class PeechoStagingAndProductionWebhookTests(TestCase):
             "/api/v1/peecho/webhook/",
             data=raw_bytes,
             content_type="application/json",
-            HTTP_HOST="staging.orderflow.silverpointprint.com",
+            HTTP_HOST="staging-orderflow.silverpointprint.com",
             HTTP_X_PEECHO_SIGNATURE=signature,
         )
 
