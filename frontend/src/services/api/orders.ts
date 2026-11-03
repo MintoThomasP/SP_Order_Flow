@@ -19,6 +19,8 @@ export const ordersApi = {
     search?: string;
     source?: string;
     is_external_pod?: boolean;
+    is_sandbox?: boolean | string;
+    environment?: "ALL" | "PRODUCTION" | "SANDBOX" | string;
     page?: number;
     page_size?: number;
     ordering?: string;
@@ -87,6 +89,7 @@ export const ordersApi = {
   simulateOrder: async (params?: {
     priority?: "RUSH_8H" | "EXPRESS_24H" | "STANDARD_72H";
     source?: "printify" | "peecho" | "custom_api" | "manual";
+    is_sandbox?: boolean;
     customer_name?: string;
     customer_email?: string;
     customer_phone?: string;
@@ -155,12 +158,27 @@ export const ordersApi = {
   },
 
   updatePeechoConfig: async (
-    config: Partial<PeechoIntegrationConfig>
-  ): Promise<{ message: string; config: PeechoIntegrationConfig }> => {
-    const res = await apiClient.post<{ message: string; config: PeechoIntegrationConfig }>(
-      "/peecho/config/",
-      config
-    );
+    config: Partial<PeechoIntegrationConfig> & { action?: "generate_keys" | string }
+  ): Promise<{
+    message: string;
+    config: PeechoIntegrationConfig;
+    generated_keys?: {
+      production_secret_key: string;
+      staging_secret_key: string;
+      secret_key_source: string;
+      updated_env_files: string[];
+    };
+  }> => {
+    const res = await apiClient.post<{
+      message: string;
+      config: PeechoIntegrationConfig;
+      generated_keys?: {
+        production_secret_key: string;
+        staging_secret_key: string;
+        secret_key_source: string;
+        updated_env_files: string[];
+      };
+    }>("/peecho/config/", config);
     return res.data;
   },
 

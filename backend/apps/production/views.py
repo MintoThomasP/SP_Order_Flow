@@ -66,12 +66,13 @@ class ProductionBatchViewSet(viewsets.ModelViewSet):
 
         data = serializer.validated_data
         order_ids = data["order_ids"]
-        orders_qs = Order.objects.filter(
-            id__in=order_ids,
-            is_sandbox=False,
-        ).exclude(
-            status__code="TEST_ORDER"
-        ).prefetch_related("items")
+        allow_sandbox = bool(
+            data.get("allow_sandbox", False)
+            or str(request.data.get("include_sandbox", "")).lower() in ("true", "1", "yes")
+        )
+        orders_qs = Order.objects.filter(id__in=order_ids).prefetch_related("items")
+        if not allow_sandbox:
+            orders_qs = orders_qs.filter(is_sandbox=False).exclude(status__code="TEST_ORDER")
 
         if not orders_qs.exists():
             return Response(
@@ -242,14 +243,21 @@ class ProductionBatchViewSet(viewsets.ModelViewSet):
         """
         GET /api/v1/production/batches/eligible-orders/
         Returns verified production orders ready to be grouped into production batches
-        (excluding test/sandbox orders and orders already assigned to a batch).
+        (excluding test/sandbox orders by default unless include_sandbox=true is explicitly passed for press test runs).
         """
-        orders = Order.objects.filter(
-            status__code__in=["PREPRESS_PASSED", "PREPRESS_QUEUED", "RECEIVED"],
-            is_sandbox=False,
-        ).exclude(
-            status__code="TEST_ORDER"
-        ).exclude(
+        include_sandbox = str(
+            request.query_params.get("include_sandbox") or request.query_params.get("allow_sandbox") or ""
+        ).lower() in ("true", "1", "yes")
+
+        allowed_statuses = ["PREPRESS_PASSED", "PREPRESS_QUEUED", "RECEIVED"]
+        if include_sandbox:
+            allowed_statuses.append("TEST_ORDER")
+
+        orders = Order.objects.filter(status__code__in=allowed_statuses)
+        if not include_sandbox:
+            orders = orders.filter(is_sandbox=False).exclude(status__code="TEST_ORDER")
+
+        orders = orders.exclude(
             production_batches__isnull=False
         ).prefetch_related("items", "status")
         return Response(OrderSerializer(orders, many=True).data)

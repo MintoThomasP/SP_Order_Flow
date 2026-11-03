@@ -76,13 +76,19 @@ def verify_peecho_webhook_request(request, force_sandbox: bool = False) -> dict:
     try:
         active_config = PeechoIntegrationConfig.get_active()
         config_secret = active_config.webhook_secret or ""
+        config_prod_secret = active_config.production_secret_key or ""
+        config_staging_secret = active_config.staging_secret_key or ""
     except Exception:
         config_secret = ""
+        config_prod_secret = ""
+        config_staging_secret = ""
 
-    # 1. Check against Staging Secret Key (HMAC digest or direct secret match)
-    if staging_secret:
-        expected_staging_hmac = _compute_hmac_sha256(raw_body, staging_secret)
-        if hmac.compare_digest(provided_sig, expected_staging_hmac) or hmac.compare_digest(provided_sig, staging_secret):
+    # 1. Check against Staging Secret Keys (Admin-saved or .env)
+    for candidate_staging_secret in (config_staging_secret, staging_secret):
+        if not candidate_staging_secret:
+            continue
+        expected_staging_hmac = _compute_hmac_sha256(raw_body, candidate_staging_secret)
+        if hmac.compare_digest(provided_sig, expected_staging_hmac) or hmac.compare_digest(provided_sig, candidate_staging_secret):
             return {
                 "is_valid": True,
                 "is_sandbox": True,
@@ -90,8 +96,8 @@ def verify_peecho_webhook_request(request, force_sandbox: bool = False) -> dict:
                 "reason": "Authenticated via PEECHO_STAGING_SECRET_KEY",
             }
 
-    # 2. Check against Production / Default Webhook Secret Keys
-    for candidate_secret in (prod_secret, default_secret, config_secret):
+    # 2. Check against Production / Default Webhook Secret Keys (Admin-saved or .env)
+    for candidate_secret in (config_prod_secret, prod_secret, default_secret, config_secret):
         if not candidate_secret:
             continue
         expected_hmac = _compute_hmac_sha256(raw_body, candidate_secret)

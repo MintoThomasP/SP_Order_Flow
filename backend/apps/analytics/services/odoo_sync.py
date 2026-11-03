@@ -74,13 +74,17 @@ def sync_entity_to_odoo(model_name: str, reference_id: str) -> dict:
         order = Order.objects.filter(order_number=reference_id).first()
         if not order:
             raise ValueError(f"Order '{reference_id}' not found for Odoo sync.")
+        if order.is_sandbox or (order.status and order.status.code == "TEST_ORDER"):
+            raise ValueError(f"Sandbox/test order '{reference_id}' is isolated from Odoo ERP accounting sync.")
         payload = transform_order_to_odoo_sale_order(order)
         odoo_id = 1000 + (hash(order.order_number) % 9000)
 
     elif model_name == "stock.picking":
-        shipment = Shipment.objects.filter(tracking_number=reference_id).first()
+        shipment = Shipment.objects.select_related("order").filter(tracking_number=reference_id).first()
         if not shipment:
             raise ValueError(f"Shipment '{reference_id}' not found for Odoo sync.")
+        if shipment.order and shipment.order.is_sandbox:
+            raise ValueError(f"Sandbox/test shipment '{reference_id}' is isolated from Odoo ERP accounting sync.")
         payload = transform_shipment_to_odoo_picking(shipment)
         odoo_id = 2000 + (hash(shipment.tracking_number) % 9000)
 

@@ -180,6 +180,8 @@ class PeechoIntegrationConfigSerializer(serializers.ModelSerializer):
     api_key_masked = serializers.SerializerMethodField()
     secret_key_masked = serializers.SerializerMethodField()
     webhook_secret_masked = serializers.SerializerMethodField()
+    production_secret_key_masked = serializers.SerializerMethodField()
+    staging_secret_key_masked = serializers.SerializerMethodField()
     full_webhook_url = serializers.SerializerMethodField()
     production_webhook_url = serializers.SerializerMethodField()
     staging_webhook_url = serializers.SerializerMethodField()
@@ -197,6 +199,11 @@ class PeechoIntegrationConfigSerializer(serializers.ModelSerializer):
             "secret_key_masked",
             "webhook_secret",
             "webhook_secret_masked",
+            "production_secret_key",
+            "production_secret_key_masked",
+            "staging_secret_key",
+            "staging_secret_key_masked",
+            "secret_key_source",
             "webhook_endpoint_path",
             "full_webhook_url",
             "production_webhook_url",
@@ -211,6 +218,8 @@ class PeechoIntegrationConfigSerializer(serializers.ModelSerializer):
             "api_key": {"write_only": True, "required": False},
             "secret_key": {"write_only": True, "required": False},
             "webhook_secret": {"write_only": True, "required": False},
+            "production_secret_key": {"required": False},
+            "staging_secret_key": {"required": False},
         }
 
     def get_api_key_masked(self, obj):
@@ -227,6 +236,18 @@ class PeechoIntegrationConfigSerializer(serializers.ModelSerializer):
         if not obj.webhook_secret:
             return ""
         return f"{obj.webhook_secret[:6]}••••••••{obj.webhook_secret[-4:]}" if len(obj.webhook_secret) > 10 else "••••••••"
+
+    def get_production_secret_key_masked(self, obj):
+        val = obj.production_secret_key or ""
+        if not val:
+            return ""
+        return f"{val[:10]}••••••••{val[-6:]}" if len(val) > 16 else "••••••••"
+
+    def get_staging_secret_key_masked(self, obj):
+        val = obj.staging_secret_key or ""
+        if not val:
+            return ""
+        return f"{val[:10]}••••••••{val[-6:]}" if len(val) > 16 else "••••••••"
 
     def get_full_webhook_url(self, obj):
         request = self.context.get("request")

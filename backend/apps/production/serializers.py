@@ -83,6 +83,11 @@ class CreateProductionBatchSerializer(serializers.Serializer):
         allow_blank=True,
         default="",
     )
+    allow_sandbox = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text="Explicitly allow sandbox/test orders to be included in a press test run.",
+    )
 
 
 class PrintMachineSerializer(serializers.ModelSerializer):

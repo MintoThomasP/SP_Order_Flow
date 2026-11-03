@@ -179,6 +179,7 @@ export default function OrdersPage() {
   const [urgencyFilter, setUrgencyFilter] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [sourceFilter, setSourceFilter] = useState<string>("ALL");
+  const [sandboxFilter, setSandboxFilter] = useState<"ALL" | "PRODUCTION" | "SANDBOX">("ALL");
   const [dateFilter, setDateFilter] = useState<string>("ALL");
   const [sortBy, setSortBy] = useState<"sla" | "newest" | "amount" | "order_number">("newest");
 
@@ -310,17 +311,23 @@ export default function OrdersPage() {
   // Reset to page 1 on filter changes or tab switches
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, urgencyFilter, statusFilter, sourceFilter, dateFilter, orderQueueTab, adminStationView]);
+  }, [searchQuery, urgencyFilter, statusFilter, sourceFilter, sandboxFilter, dateFilter, orderQueueTab, adminStationView]);
 
   // Queries - Real-time polling every 5 seconds for instant sync
   const { data: ordersData, isLoading: ordersLoading, refetch: refetchOrders } = useQuery({
-    queryKey: ["orders", searchQuery, urgencyFilter, statusFilter, sourceFilter, adminStationView],
+    queryKey: ["orders", searchQuery, urgencyFilter, statusFilter, sourceFilter, sandboxFilter, adminStationView],
     queryFn: () =>
       ordersApi.getOrders({
         search: searchQuery || undefined,
         urgency: urgencyFilter || undefined,
         status: statusFilter === "ALL" ? undefined : statusFilter || undefined,
         source: sourceFilter === "ALL" ? undefined : sourceFilter,
+        is_sandbox:
+          sandboxFilter === "SANDBOX"
+            ? true
+            : sandboxFilter === "PRODUCTION"
+            ? false
+            : undefined,
         page_size: 100,
         ordering: "-created_at",
       }),
@@ -539,6 +546,17 @@ export default function OrdersPage() {
       });
     }
 
+    // Client-side sandbox/environment filter backup
+    if (sandboxFilter === "PRODUCTION") {
+      list = list.filter(
+        (ord) => !ord.is_sandbox && (ord.status_details?.code || ord.status) !== "TEST_ORDER"
+      );
+    } else if (sandboxFilter === "SANDBOX") {
+      list = list.filter(
+        (ord) => Boolean(ord.is_sandbox) || (ord.status_details?.code || ord.status) === "TEST_ORDER"
+      );
+    }
+
     // Date filter
     if (dateFilter !== "ALL") {
       const now = new Date();
@@ -582,7 +600,7 @@ export default function OrdersPage() {
     });
 
     return list;
-  }, [ordersData?.results, isAdmin, adminStationView, stationScope, effectiveRole, dateFilter, sortBy]);
+  }, [ordersData?.results, isAdmin, adminStationView, stationScope, effectiveRole, sandboxFilter, dateFilter, sortBy]);
 
   // Partition into Pending (Action Required, highlighted) and Processed (Completed / Approved / Rejected)
   const { pendingOrdersList, processedOrdersList } = useMemo(() => {
@@ -688,6 +706,9 @@ export default function OrdersPage() {
     {
       header: "Order Number",
       cell: (ord) => {
+        const isTestOrder =
+          Boolean(ord.is_sandbox) ||
+          (ord.status_details?.code || ord.status || "").toUpperCase() === "TEST_ORDER";
         const createdDate = ord.created_at
           ? new Date(ord.created_at).toLocaleString("en-GB", {
               day: "2-digit",
@@ -699,9 +720,16 @@ export default function OrdersPage() {
           : "";
         return (
           <div className="flex flex-col">
-            <span className="font-mono font-bold text-xs text-[#0073EA] hover:underline">
-              {ord.order_number}
-            </span>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="font-mono font-bold text-xs text-[#0073EA] hover:underline">
+                {ord.order_number}
+              </span>
+              {isTestOrder && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wide bg-amber-100 text-amber-800 border border-amber-300 shadow-2xs">
+                  SANDBOX / TEST ORDER
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
               <span className="font-mono">{ord.peecho_order_id || ord.external_pod_order_id || "Direct Job"}</span>
               {createdDate && (
@@ -782,17 +810,29 @@ export default function OrdersPage() {
       header: "Status",
       cell: (ord) => {
         const st = ord.status_details;
-        return st ? (
-          <Badge
-            variant="custom"
-            bgHex={st.badge_bg}
-            textHex={st.badge_text}
-            dot={true}
-          >
-            {st.name}
-          </Badge>
-        ) : (
-          <Badge variant="neutral">{ord.status}</Badge>
+        const isTestOrder =
+          Boolean(ord.is_sandbox) ||
+          (st?.code || ord.status || "").toUpperCase() === "TEST_ORDER";
+        return (
+          <div className="flex flex-wrap items-center gap-1">
+            {st ? (
+              <Badge
+                variant="custom"
+                bgHex={st.badge_bg}
+                textHex={st.badge_text}
+                dot={true}
+              >
+                {st.name}
+              </Badge>
+            ) : (
+              <Badge variant="neutral">{ord.status}</Badge>
+            )}
+            {isTestOrder && st?.code !== "TEST_ORDER" && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                TEST ORDER
+              </span>
+            )}
+          </div>
         );
       },
     },
@@ -1158,6 +1198,38 @@ export default function OrdersPage() {
         {/* Dropdown Filters Row */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-2.5 border-t border-slate-100 text-xs">
           <div className="flex flex-wrap items-center gap-3">
+            {/* Environment Mode Filter: All Orders vs Production vs Sandbox/Test Orders */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-500 font-semibold uppercase text-[10px] flex items-center gap-1">
+                Environment:
+              </span>
+              <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-100 text-xs font-semibold">
+                {[
+                  { id: "ALL" as const, label: "All Orders" },
+                  { id: "PRODUCTION" as const, label: "Production Orders" },
+                  { id: "SANDBOX" as const, label: "Sandbox/Test Orders" },
+                ].map((env) => (
+                  <button
+                    key={env.id}
+                    type="button"
+                    onClick={() => {
+                      setSandboxFilter(env.id);
+                      setCurrentPage(1);
+                    }}
+                    className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                      sandboxFilter === env.id
+                        ? env.id === "SANDBOX"
+                          ? "bg-amber-500 text-white shadow-2xs"
+                          : "bg-[#0073EA] text-white shadow-2xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    {env.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Origin Channel Dropdown */}
             <div className="flex items-center gap-1.5">
               <span className="text-slate-500 font-semibold uppercase text-[10px] flex items-center gap-1">
@@ -1224,11 +1296,12 @@ export default function OrdersPage() {
           </div>
 
           {/* Quick Filter Reset */}
-          {(sourceFilter !== "ALL" || urgencyFilter !== "" || statusFilter !== "ALL" || dateFilter !== "ALL" || searchQuery) && (
+          {(sourceFilter !== "ALL" || sandboxFilter !== "ALL" || urgencyFilter !== "" || statusFilter !== "ALL" || dateFilter !== "ALL" || searchQuery) && (
             <button
               type="button"
               onClick={() => {
                 setSourceFilter("ALL");
+                setSandboxFilter("ALL");
                 setUrgencyFilter("");
                 setStatusFilter("ALL");
                 setDateFilter("ALL");
@@ -1992,11 +2065,17 @@ export default function OrdersPage() {
         isOpen={!!selectedOrder}
         onClose={() => setSelectedOrder(null)}
         title={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span>{selectedOrder?.order_number}</span>
             <span className="text-xs text-slate-400 font-mono">
               [{selectedOrder?.peecho_order_id || selectedOrder?.external_pod_order_id || "Direct Order"}]
             </span>
+            {(selectedOrder?.is_sandbox ||
+              (selectedOrder?.status_details?.code || selectedOrder?.status) === "TEST_ORDER") && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-extrabold uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300 shadow-2xs">
+                SANDBOX / TEST ORDER
+              </span>
+            )}
           </div>
         }
         description="Customer information, book specifications, artwork files, and complete order history."
@@ -2039,6 +2118,20 @@ export default function OrdersPage() {
             {/* TAB 1: DETAILS & ARTWORK */}
             {orderModalTab === "details" && (
               <div className="space-y-4">
+                {(selectedOrder.is_sandbox ||
+                  (selectedOrder.status_details?.code || selectedOrder.status) === "TEST_ORDER") && (
+                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <span className="px-2 py-0.5 rounded bg-amber-500 text-white font-extrabold text-[10px] uppercase tracking-wider">
+                        TEST ORDER
+                      </span>
+                      <span className="font-semibold text-xs">
+                        Staging / Sandbox Order — Isolated from active physical press queues and financial Statements of Account (SOA).
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 {/* Top Status & SLA Banner */}
                 <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-3">
                   <div>

@@ -102,6 +102,7 @@ export interface Order extends BaseModel {
   currency: string;
   order_source?: "peecho" | "printify" | "custom_api" | "manual" | string;
   is_external_pod?: boolean;
+  is_sandbox?: boolean;
   external_pod_order_id?: string | null;
   tracking_number?: string;
   peecho_metadata: Record<string, any>;
@@ -243,6 +244,7 @@ export interface PeechoPayloadLog {
   payload_hash: string;
   raw_payload: Record<string, any>;
   status: "RECEIVED" | "PROCESSED" | "DUPLICATE" | "FAILED";
+  is_sandbox?: boolean;
   error_message: string;
   ip_address: string | null;
   created_at: string;
@@ -254,6 +256,7 @@ export interface OrderMetrics {
   in_production: number;
   ready_dispatch: number;
   sla_at_risk: number;
+  sandbox_test_orders?: number;
 }
 
 export interface AuthTokens {
@@ -605,8 +608,15 @@ export interface PeechoIntegrationConfig {
   secret_key_masked: string;
   webhook_secret?: string;
   webhook_secret_masked: string;
+  production_secret_key?: string;
+  production_secret_key_masked?: string;
+  staging_secret_key?: string;
+  staging_secret_key_masked?: string;
+  secret_key_source?: "SILVERPOINT_GENERATED" | "PEECHO_ADMIN" | string;
   webhook_endpoint_path: string;
   full_webhook_url: string;
+  production_webhook_url?: string;
+  staging_webhook_url?: string;
   is_sandbox: boolean;
   auto_sync_status_changes: boolean;
   last_connection_test_at: string | null;

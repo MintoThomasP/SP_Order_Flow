@@ -36,12 +36,16 @@ class DashboardMetricsView(APIView):
     def get(self, request):
         now = timezone.now()
         
-        # 1. Daily Print Volume (7-day timeline)
+        # 1. Daily Print Volume (7-day timeline) - excluding sandbox/test orders
         daily_volume = []
         for i in range(6, -1, -1):
             day_start = (now - timedelta(days=i)).replace(hour=0, minute=0, second=0, microsecond=0)
             day_end = day_start + timedelta(days=1)
-            day_orders = Order.objects.filter(created_at__gte=day_start, created_at__lt=day_end)
+            day_orders = Order.objects.filter(
+                created_at__gte=day_start,
+                created_at__lt=day_end,
+                is_sandbox=False,
+            ).exclude(status__code="TEST_ORDER")
             
             # Base simulation with live database blending
             day_count = day_orders.count() + (12 + (i * 3) % 8)
@@ -57,7 +61,7 @@ class DashboardMetricsView(APIView):
             })
 
         # 2. Courier Distribution
-        carrier_counts = Shipment.objects.values("carrier_name").annotate(count=Count("id"))
+        carrier_counts = Shipment.objects.filter(order__is_sandbox=False).values("carrier_name").annotate(count=Count("id"))
         courier_data = []
         if carrier_counts.exists():
             for c in carrier_counts:
@@ -95,11 +99,11 @@ class DashboardMetricsView(APIView):
                 {"reason": "PUR Glue Defect", "count": 3},
             ]
 
-        # 5. Core Operational Counters
-        total_orders = Order.objects.count()
+        # 5. Core Operational Counters (excluding sandbox/test orders)
+        total_orders = Order.objects.filter(is_sandbox=False).exclude(status__code="TEST_ORDER").count()
         total_batches = ProductionBatch.objects.count()
-        total_shipments = Shipment.objects.count()
-        total_reprints = ReprintDamageLog.objects.count()
+        total_shipments = Shipment.objects.filter(order__is_sandbox=False).count()
+        total_reprints = ReprintDamageLog.objects.filter(order__is_sandbox=False).count()
 
         return Response({
             "daily_volume": daily_volume,
@@ -231,10 +235,10 @@ class TriggerOdooSyncView(APIView):
 class OdooSalesOrderFeedView(APIView):
     """
     GET /api/v1/analytics/odoo/sale-orders/
-    Clean JSON feed of orders formatted for Odoo 'sale.order' integration.
+    Clean JSON feed of production orders formatted for Odoo 'sale.order' integration.
     """
     def get(self, request):
-        orders = Order.objects.prefetch_related("items").all()[:50]
+        orders = Order.objects.filter(is_sandbox=False).exclude(status__code="TEST_ORDER").prefetch_related("items").all()[:50]
         data = [transform_order_to_odoo_sale_order(o) for o in orders]
         return Response(data, status=status.HTTP_200_OK)
 
@@ -242,10 +246,10 @@ class OdooSalesOrderFeedView(APIView):
 class OdooDeliveryFeedView(APIView):
     """
     GET /api/v1/analytics/odoo/pickings/
-    Clean JSON feed of shipments formatted for Odoo 'stock.picking' integration.
+    Clean JSON feed of production shipments formatted for Odoo 'stock.picking' integration.
     """
     def get(self, request):
-        shipments = Shipment.objects.select_related("order").all()[:50]
+        shipments = Shipment.objects.filter(order__is_sandbox=False).select_related("order").all()[:50]
         data = [transform_shipment_to_odoo_picking(s) for s in shipments]
         return Response(data, status=status.HTTP_200_OK)
 

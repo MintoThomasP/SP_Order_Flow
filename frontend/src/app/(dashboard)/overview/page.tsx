@@ -141,6 +141,7 @@ export default function OperationsOverviewPage() {
   const [dispatchQueuePageSize, setDispatchQueuePageSize] = useState(5);
   const [prodQueuePage, setProdQueuePage] = useState(1);
   const [prodQueuePageSize, setProdQueuePageSize] = useState(5);
+  const [dashboardOrderFilter, setDashboardOrderFilter] = useState<"ALL" | "PRODUCTION" | "SANDBOX">("PRODUCTION");
 
   const { data: reprintsData, refetch: refetchReprints } = useQuery({
     queryKey: ["analytics", "reprints", reprintsPage, reprintsPageSize],
@@ -158,24 +159,43 @@ export default function OperationsOverviewPage() {
   });
 
   const { data: ordersData } = useQuery({
-    queryKey: ["orders", "activeList"],
-    queryFn: () => ordersApi.getOrders({ page_size: 100, ordering: "-created_at" }),
+    queryKey: ["orders", "activeList", dashboardOrderFilter],
+    queryFn: () =>
+      ordersApi.getOrders({
+        page_size: 100,
+        ordering: "-created_at",
+        is_sandbox:
+          dashboardOrderFilter === "SANDBOX"
+            ? true
+            : dashboardOrderFilter === "PRODUCTION"
+            ? false
+            : undefined,
+      }),
     refetchInterval: 5000,
   });
 
   // Role Specific Filtered Order Lists (strictly descending - newest first)
   const ordersList: Order[] = useMemo(() => {
-    const list = [...(ordersData?.results || [])];
+    let list = [...(ordersData?.results || [])];
+    if (dashboardOrderFilter === "PRODUCTION") {
+      list = list.filter(
+        (ord) => !ord.is_sandbox && (ord.status_details?.code || ord.status) !== "TEST_ORDER"
+      );
+    } else if (dashboardOrderFilter === "SANDBOX") {
+      list = list.filter(
+        (ord) => Boolean(ord.is_sandbox) || (ord.status_details?.code || ord.status) === "TEST_ORDER"
+      );
+    }
     return list.sort((a, b) => {
       const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
       const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
       if (timeB !== timeA) return timeB - timeA;
       return (b.order_number || "").localeCompare(a.order_number || "", undefined, { numeric: true });
     });
-  }, [ordersData?.results]);
+  }, [ordersData?.results, dashboardOrderFilter]);
 
   const prepressPendingOrders = ordersList.filter((o) =>
-    ["RECEIVED", "PREPRESS_QUEUED", "PENDING_PREPRESS"].includes(o.status_details?.code || o.status)
+    ["RECEIVED", "PREPRESS_QUEUED", "PENDING_PREPRESS", "TEST_ORDER"].includes(o.status_details?.code || o.status)
   );
   const prepressApprovedOrders = ordersList.filter((o) =>
     ["PREPRESS_PASSED", "ARTWORK_VERIFIED"].includes(o.status_details?.code || o.status)
@@ -359,7 +379,36 @@ export default function OperationsOverviewPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Environment Filter Toggle: All Orders vs Production Orders vs Sandbox/Test Orders */}
+          <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-white shadow-2xs text-xs font-semibold">
+            {[
+              { id: "ALL" as const, label: "All Orders" },
+              { id: "PRODUCTION" as const, label: "Production Orders" },
+              { id: "SANDBOX" as const, label: "Sandbox/Test Orders" },
+            ].map((env) => (
+              <button
+                key={env.id}
+                type="button"
+                onClick={() => {
+                  setDashboardOrderFilter(env.id);
+                  setPrepressQueuePage(1);
+                  setProdQueuePage(1);
+                  setDispatchQueuePage(1);
+                }}
+                className={`px-2.5 py-1.5 rounded-md transition-all cursor-pointer ${
+                  dashboardOrderFilter === env.id
+                    ? env.id === "SANDBOX"
+                      ? "bg-amber-500 text-white shadow-2xs"
+                      : "bg-[#0073EA] text-white shadow-2xs"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                {env.label}
+              </button>
+            ))}
+          </div>
+
           <Button
             size="sm"
             variant="outline"
@@ -833,7 +882,14 @@ export default function OperationsOverviewPage() {
                         return (
                           <tr key={order.id} className="hover:bg-slate-50/80 transition-colors">
                             <td className="py-3 px-4">
-                              <p className="font-mono font-bold text-[#0073EA]">{order.order_number}</p>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <p className="font-mono font-bold text-[#0073EA]">{order.order_number}</p>
+                                {(order.is_sandbox || (order.status_details?.code || order.status) === "TEST_ORDER") && (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase bg-amber-100 text-amber-800 border border-amber-300">
+                                    TEST ORDER
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-[10px] text-slate-400 font-mono">{order.peecho_order_id}</p>
                             </td>
                             <td className="py-3 px-4">
@@ -969,7 +1025,14 @@ export default function OperationsOverviewPage() {
                         return (
                           <tr key={order.id} className="hover:bg-slate-50/80 transition-colors">
                             <td className="py-3 px-4">
-                              <p className="font-mono font-bold text-[#0073EA]">{order.order_number}</p>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <p className="font-mono font-bold text-[#0073EA]">{order.order_number}</p>
+                                {(order.is_sandbox || (order.status_details?.code || order.status) === "TEST_ORDER") && (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase bg-amber-100 text-amber-800 border border-amber-300">
+                                    TEST ORDER
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-[10px] text-slate-400 font-mono">{order.peecho_order_id}</p>
                             </td>
                             <td className="py-3 px-4">
@@ -1102,7 +1165,14 @@ export default function OperationsOverviewPage() {
                         return (
                           <tr key={order.id} className="hover:bg-slate-50/80 transition-colors">
                             <td className="py-3 px-4">
-                              <p className="font-mono font-bold text-[#0073EA]">{order.order_number}</p>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <p className="font-mono font-bold text-[#0073EA]">{order.order_number}</p>
+                                {(order.is_sandbox || (order.status_details?.code || order.status) === "TEST_ORDER") && (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase bg-amber-100 text-amber-800 border border-amber-300">
+                                    TEST ORDER
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-[10px] text-slate-400 font-mono">{order.peecho_order_id}</p>
                             </td>
                             <td className="py-3 px-4">
@@ -1112,9 +1182,16 @@ export default function OperationsOverviewPage() {
                               </p>
                             </td>
                             <td className="py-3 px-4">
-                              <Badge variant="primary" size="sm">
-                                {order.status_details?.name || status}
-                              </Badge>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <Badge variant="primary" size="sm">
+                                  {order.status_details?.name || status}
+                                </Badge>
+                                {(order.is_sandbox || status === "TEST_ORDER") && (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase bg-amber-100 text-amber-800 border border-amber-300">
+                                    SANDBOX
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="py-3 px-4 font-mono text-[11px] text-slate-600">
                               {order.sla_deadline ? new Date(order.sla_deadline).toLocaleTimeString() : "Standard 72H"}
