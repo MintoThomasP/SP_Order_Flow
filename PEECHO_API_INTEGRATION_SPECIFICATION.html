@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Peecho REST API & Gateway Integration Specification - Silver Point Engineering</title>
+  <style>
+    /* ==========================================================================
+       CSS Reset & Typography for High-Resolution Printing & Browser Display
+       ========================================================================== */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    @page {
+      size: A4 portrait;
+      margin: 14mm 12mm 16mm 12mm;
+      @bottom-right {
+        content: "Page " counter(page) " of " counter(pages);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        font-size: 8pt;
+        color: #64748b;
+      }
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 9.2pt;
+      line-height: 1.5;
+      color: #0f172a;
+      background-color: #f8fafc;
+      padding: 24px;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .document-container {
+      max-width: 900px;
+      margin: 0 auto;
+      background-color: #ffffff;
+      padding: 40px 48px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+    }
+
+    /* Print Overrides */
+    @media print {
+      body {
+        background-color: #ffffff;
+        padding: 0;
+      }
+      .document-container {
+        border: none;
+        box-shadow: none;
+        padding: 0;
+        max-width: 100%;
+      }
+      .page-break {
+        page-break-before: always;
+      }
+      .page-break-inside-avoid {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+      .no-print {
+        display: none !important;
+      }
+    }
+
+    /* ==========================================================================
+       Header & Meta Section
+       ========================================================================== */
+    .doc-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 2px solid #4f46e5;
+      padding-bottom: 18px;
+      margin-bottom: 24px;
+    }
+
+    .brand-title {
+      font-size: 19pt;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: #4338ca;
+      text-transform: uppercase;
+      line-height: 1.1;
+    }
+
+    .brand-subtitle {
+      font-size: 10.5pt;
+      font-weight: 700;
+      color: #0f172a;
+      margin-top: 4px;
+      letter-spacing: 0.2px;
+    }
+
+    .brand-tagline {
+      font-size: 8pt;
+      color: #64748b;
+      margin-top: 2px;
+    }
+
+    .meta-box {
+      background-color: #eef2ff;
+      border: 1px solid #c7d2fe;
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 8pt;
+      min-width: 260px;
+      text-align: right;
+    }
+
+    .meta-box .meta-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 3px;
+    }
+
+    .meta-box .meta-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .meta-label {
+      font-weight: 600;
+      color: #3730a3;
+      text-transform: uppercase;
+      font-size: 7.5pt;
+      margin-right: 12px;
+    }
+
+    .meta-val {
+      font-weight: 700;
+      color: #0f172a;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    /* ==========================================================================
+       Headings & Formatting
+       ========================================================================== */
+    h1 {
+      font-size: 14pt;
+      font-weight: 800;
+      color: #0f172a;
+      margin: 22px 0 12px 0;
+      border-bottom: 1.5px solid #e2e8f0;
+      padding-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    h2 {
+      font-size: 11pt;
+      font-weight: 700;
+      color: #4338ca;
+      margin: 16px 0 8px 0;
+    }
+
+    h3 {
+      font-size: 9.5pt;
+      font-weight: 700;
+      color: #1e293b;
+      margin: 12px 0 6px 0;
+    }
+
+    p {
+      margin-bottom: 10px;
+      text-align: justify;
+      color: #334155;
+    }
+
+    .section-lead {
+      font-size: 9.5pt;
+      color: #1e293b;
+      font-weight: 500;
+      margin-bottom: 14px;
+      line-height: 1.6;
+    }
+
+    /* Badges & Tags */
+    .badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 7.5pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-indigo  { background: #e0e7ff; color: #4338ca; border: 1px solid #c7d2fe; }
+    .badge-success { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+    .badge-warning { background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
+    .badge-danger  { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
+
+    .method-badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 7.5pt;
+      font-weight: 800;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      text-transform: uppercase;
+    }
+
+    .method-post { background-color: #4338ca; color: #ffffff; }
+    .method-get  { background-color: #047857; color: #ffffff; }
+
+    /* Callout Boxes */
+    .callout {
+      border-left: 4px solid #4f46e5;
+      background-color: #f5f3ff;
+      padding: 10px 14px;
+      border-radius: 0 6px 6px 0;
+      margin: 12px 0;
+      font-size: 8.8pt;
+      color: #3730a3;
+    }
+
+    .callout.callout-success {
+      border-left-color: #16a34a;
+      background-color: #f0fdf4;
+      color: #166534;
+    }
+
+    .callout.callout-warning {
+      border-left-color: #f59e0b;
+      background-color: #fffbeb;
+      color: #92400e;
+    }
+
+    .callout.callout-danger {
+      border-left-color: #dc2626;
+      background-color: #fef2f2;
+      color: #991b1b;
+    }
+
+    .callout-title {
+      font-weight: 700;
+      margin-bottom: 3px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* ==========================================================================
+       Dark-Mode Code Blocks & JSON Viewers
+       ========================================================================== */
+    .code-container {
+      background-color: #0f172a;
+      border-radius: 6px;
+      margin: 10px 0 14px 0;
+      border: 1px solid #1e293b;
+      overflow: hidden;
+    }
+
+    .code-header {
+      background-color: #1e293b;
+      padding: 5px 12px;
+      font-size: 7.5pt;
+      font-weight: 600;
+      color: #94a3b8;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #334155;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    .code-body {
+      padding: 12px 14px;
+      overflow-x: auto;
+      color: #e2e8f0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 7.6pt;
+      line-height: 1.38;
+      white-space: pre;
+    }
+
+    /* JSON Syntax Highlighting Simulator */
+    .json-key   { color: #7dd3fc; font-weight: 600; }
+    .json-str   { color: #86efac; }
+    .json-num   { color: #fde047; }
+    .json-bool  { color: #f472b6; font-weight: 600; }
+    .json-null  { color: #94a3b8; font-style: italic; }
+
+    .code-snippet {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 8pt;
+      background: #f1f5f9;
+      padding: 2px 5px;
+      border-radius: 3px;
+      color: #0f172a;
+      border: 1px solid #e2e8f0;
+    }
+
+    /* ==========================================================================
+       ASCII Topology Block
+       ========================================================================== */
+    .diagram-container {
+      background-color: #0f172a;
+      color: #f8fafc;
+      padding: 14px;
+      border-radius: 6px;
+      margin: 12px 0 16px 0;
+      overflow-x: auto;
+      border: 1px solid #1e293b;
+    }
+
+    .diagram-container pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 7.1pt;
+      line-height: 1.25;
+      white-space: pre;
+    }
+
+    /* ==========================================================================
+       Tables
+       ========================================================================== */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 16px 0;
+      font-size: 8.5pt;
+    }
+
+    th, td {
+      border: 1px solid #cbd5e1;
+      padding: 6px 10px;
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    th {
+      background-color: #f1f5f9;
+      color: #0f172a;
+      font-weight: 700;
+      text-transform: uppercase;
+      font-size: 7.5pt;
+      letter-spacing: 0.4px;
+    }
+
+    tr:nth-child(even) td {
+      background-color: #f8fafc;
+    }
+
+    /* Grid layout */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin: 10px 0;
+    }
+
+    .info-card {
+      background-color: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 10px 12px;
+    }
+
+    .info-card-title {
+      font-size: 8pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #4338ca;
+      margin-bottom: 4px;
+      border-bottom: 1px solid #f1f5f9;
+      padding-bottom: 3px;
+    }
+
+    /* Footer */
+    .doc-footer {
+      margin-top: 24px;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 7.5pt;
+      color: #64748b;
+    }
+  </style>
+</head>
+<body>
+
+<div class="document-container">
+
+  <!-- ========================================================================
+       DOCUMENT HEADER & META
+       ======================================================================== -->
+  <header class="doc-header">
+    <div>
+      <div class="brand-title">Silver Point Engineering Gateway</div>
+      <div class="brand-subtitle">Peecho REST API & Gateway Integration Specification</div>
+      <div class="brand-tagline">Formal Cloud API Contract, Security Protocols, Payloads & Extended ERP Connectivity</div>
+    </div>
+    <div class="meta-box">
+      <div class="meta-row">
+        <span class="meta-label">Contract Ref:</span>
+        <span class="meta-val">SP-PCH-API-2026-V1.0</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">Protocol Version:</span>
+        <span class="meta-val">v2.0 REST / OpenAPI 3.0</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">Issuer:</span>
+        <span class="meta-val">Silver Point POD Engineering</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">Recipient:</span>
+        <span class="meta-val">Peecho Software Engineering (NL)</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">Security Clearance:</span>
+        <span class="meta-val">Partner Technical Confidential</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ========================================================================
+       1. TECHNICAL ARCHITECTURE OVERVIEW
+       ======================================================================== -->
+  <section>
+    <h1>1. Technical Architecture & Technology Stack</h1>
+    <p class="section-lead">
+      This document specifies the bilateral API contract between <strong>Peecho B.V. (Netherlands)</strong> and the <strong>Silver Point Engineering Gateway (UAE & India)</strong>. The system provides zero-data-loss order ingestion, real-time cryptographic validation, asynchronous high-resolution PDF streaming, and automated reverse shipment callbacks.
+    </p>
+
+    <!-- ASCII ARCHITECTURE TOPOLOGY -->
+    <div class="diagram-container page-break-inside-avoid">
+      <pre>
+===================================================================================================================
+                          SILVER POINT POD ENTERPRISE ENGINEERING TOPOLOGY
+===================================================================================================================
+
+  [ PEECHO CLOUD GATEWAY ]
+  (Amsterdam, Netherlands)
+        |
+        |  1. Inbound Webhooks: POST /api/v1/peecho/webhook/
+        |     (Signed with HMAC-SHA256 & Deduplicated via SHA-256 Payload Hash)
+        v
+  +---------------------------------------------------------------------------------------------------------------+
+  |  NGINX INGRESS & SECURITY LAYER (TLS 1.3 Termination, Rate Limiting: 60 req/min, IP Whitelist)               |
+  +---------------------------------------------------------------------------------------------------------------+
+        |
+        |  Proxy Forward (HTTP / Keep-Alive)
+        v
+  +---------------------------------------------------------------------------------------------------------------+
+  |  DJANGO REST FRAMEWORK (DRF 5.1+ / Python 3.12+) API CORE                                                     |
+  |  - Signature & Payload Validator (`process_peecho_payload`)                                                   |
+  |  - Payload Deduplication Engine (`PeechoPayloadLog`)                                                          |
+  |  - Dynamic SLA Countdown Timer Calculator (`RUSH_8H`, `EXPRESS_24H`, `STANDARD_72H`)                          |
+  +---------------------------------------------------------------------------------------------------------------+
+        |                                                   |                                 |
+        | (Transactional Ledger)                            | (Async Message Broker)          | (Asset Vault Storage)
+        v                                                   v                                 v
+  +-----------------------------------+             +-----------------------+   +---------------------------------+
+  |  AMAZON RDS MYSQL 8.0+            |             |  REDIS 7.x CLUSTER    |   |  AWS S3 ENCRYPTED ASSET VAULT   |
+  |  - Multi-AZ Deployment            |             |  - In-Memory Queue    |   |  - Bucket: silverpoint-artwork  |
+  |  - Row-Level Locking on Orders    |             |  - Celery Broker      |   |  - Chunked Multipart PDF Stream |
+  |  - Full ACID State Persistence    |             |  - Fast Cache Layer   |   |  - AWB PDF Waybill Archive      |
+  +-----------------------------------+             +-----------------------+   +---------------------------------+
+                                                            |
+                                                            v
+                                            +-----------------------------------------------+
+                                            |  DISTRIBUTED CELERY ASYNC WORKERS             |
+                                            |  - S3 PDF Streamer (`stream_pdf_to_s3`)       |
+                                            |  - Preflight & Spine Caliper Math Engine      |
+                                            |  - Carrier API Client (DHL, Aramex, FedEx)    |
+                                            |  - Outbound Callback Sync with Backoff Engine |
+                                            +-----------------------------------------------+
+                                                            |
+                                                            |  2. Outbound Shipment Callback:
+                                                            |     POST /v2/orders/{id}/shipment
+                                                            v
+                                                  [ PEECHO API GATEWAY ]
+===================================================================================================================
+      </pre>
+    </div>
+
+    <div class="grid-2 page-break-inside-avoid">
+      <div class="info-card">
+        <div class="info-card-title">Backend Architecture & Persistence</div>
+        <ul style="padding-left: 14px; font-size: 8.5pt; color: #334155;">
+          <li><strong>API Core:</strong> Django 5.1+, Django REST Framework (DRF), Python 3.12+.</li>
+          <li><strong>Database:</strong> Amazon RDS MySQL 8.0+ Multi-AZ with read replicas.</li>
+          <li><strong>Worker Cluster:</strong> Celery 5.4+ with Redis 7.x for asynchronous background task execution.</li>
+          <li><strong>Object Vault:</strong> AWS S3 (SSE-KMS) for high-res interior/cover PDFs and courier AWBs.</li>
+        </ul>
+      </div>
+      <div class="info-card">
+        <div class="info-card-title">Frontend Operations Portal</div>
+        <ul style="padding-left: 14px; font-size: 8.5pt; color: #334155;">
+          <li><strong>Framework:</strong> Next.js 16 (App Router, Turbopack, React 19, TypeScript 5).</li>
+          <li><strong>State & Polling:</strong> TanStack React Query v5 with 4–5 second real-time polling.</li>
+          <li><strong>Styling & UI:</strong> Tailwind CSS 4, Lucide Icons, Recharts 3 visual telemetry.</li>
+          <li><strong>Floor Scanning:</strong> Camera PWA Barcode & QR Scanner for mobile shopfloor execution.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========================================================================
+       2. INBOUND WEBHOOK INTEGRATION
+       ======================================================================== -->
+  <section class="page-break-inside-avoid">
+    <h1>2. Inbound Webhook Integration (`POST /api/v1/peecho/webhook/`)</h1>
+    <p>
+      The inbound gateway endpoint accepts order creation events from Peecho. It guarantees non-blocking execution, responds with HTTP 201 Created within <span class="badge badge-success">&lt; 400 ms</span>, and offloads heavy file streaming to Celery workers.
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 20%;">Environment</th>
+          <th style="width: 42%;">Base URL & Endpoint</th>
+          <th style="width: 38%;">Authentication & Security</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Production Gateway</strong></td>
+          <td><span class="code-snippet">https://orderflow.silverpointprint.com/api/v1/peecho/webhook/</span></td>
+          <td>HMAC-SHA256 (<span class="code-snippet">X-Peecho-Signature</span>) + TLS 1.3</td>
+        </tr>
+        <tr>
+          <td><strong>Staging Sandbox</strong></td>
+          <td><span class="code-snippet">https://staging.orderflow.silverpointprint.com/api/v1/peecho/webhook/</span></td>
+          <td>HMAC-SHA256 Sandbox Secret Key (<span class="code-snippet">is_sandbox = True</span>)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Security Verification & Deduplication Mechanics</h3>
+    <p style="font-size: 8.5pt;">
+      1. <strong>Signature Verification:</strong> The raw request payload bytes are hashed with HMAC-SHA256 using the configured <span class="code-snippet">PEECHO_WEBHOOK_SECRET</span>. If the calculated hex signature does not match the <span class="code-snippet">X-Peecho-Signature</span> header, the request is immediately dropped with HTTP 401 Unauthorized.<br>
+      2. <strong>Payload Deduplication:</strong> A SHA-256 hash of the payload is computed and compared against <span class="code-snippet">PeechoPayloadLog</span>. If a processed log with the identical hash already exists, the gateway returns HTTP 200 OK (<span class="code-snippet">DUPLICATE</span>) without generating duplicate shopfloor jobs.
+    </p>
+
+    <!-- JSON SCHEMA CODE BLOCK -->
+    <div class="code-container">
+      <div class="code-header">
+        <span>INBOUND WEBHOOK PAYLOAD SCHEMA (POST /api/v1/peecho/webhook/)</span>
+        <span>application/json</span>
+      </div>
+      <div class="code-body">{
+  <span class="json-key">"event"</span>: <span class="json-str">"order.created"</span>,
+  <span class="json-key">"order_id"</span>: <span class="json-str">"PEECHO-881920"</span>,
+  <span class="json-key">"created_at"</span>: <span class="json-str">"2026-11-03T10:15:30Z"</span>,
+  <span class="json-key">"priority"</span>: <span class="json-str">"EXPRESS_24H"</span>,
+  <span class="json-key">"currency"</span>: <span class="json-str">"EUR"</span>,
+  <span class="json-key">"total_amount"</span>: <span class="json-str">"45.00"</span>,
+  <span class="json-key">"customer"</span>: {
+    <span class="json-key">"name"</span>: <span class="json-str">"Alexander van der Meer"</span>,
+    <span class="json-key">"email"</span>: <span class="json-str">"a.vandermeer@example.nl"</span>,
+    <span class="json-key">"phone"</span>: <span class="json-str">"+31 20 123 4567"</span>
+  },
+  <span class="json-key">"shipping_address"</span>: {
+    <span class="json-key">"recipient_name"</span>: <span class="json-str">"Alexander van der Meer"</span>,
+    <span class="json-key">"street"</span>: <span class="json-str">"Prinsengracht 263"</span>,
+    <span class="json-key">"city"</span>: <span class="json-str">"Amsterdam"</span>,
+    <span class="json-key">"postal_code"</span>: <span class="json-str">"1016 GV"</span>,
+    <span class="json-key">"country"</span>: <span class="json-str">"NL"</span>,
+    <span class="json-key">"carrier"</span>: <span class="json-str">"DHL Express"</span>
+  },
+  <span class="json-key">"items"</span>: [
+    {
+      <span class="json-key">"item_id"</span>: <span class="json-str">"ITEM-101"</span>,
+      <span class="json-key">"product_type"</span>: <span class="json-str">"Hardcover Photo Book A4"</span>,
+      <span class="json-key">"quantity"</span>: <span class="json-num">1</span>,
+      <span class="json-key">"page_count"</span>: <span class="json-num">48</span>,
+      <span class="json-key">"spine_width_mm"</span>: <span class="json-num">12.40</span>,
+      <span class="json-key">"paper_stock"</span>: <span class="json-str">"200gsm Silk Inner + 350gsm Hardcover Gloss"</span>,
+      <span class="json-key">"pdf_artwork_url"</span>: <span class="json-str">"https://assets.peecho.com/orders/881920/content_hires.pdf"</span>,
+      <span class="json-key">"pdf_cover_url"</span>: <span class="json-str">"https://assets.peecho.com/orders/881920/cover_hires.pdf"</span>
+    }
+  ]
+}</div>
+    </div>
+
+    <h3>HTTP Response Status Codes</h3>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 15%;">Status Code</th>
+          <th style="width: 25%;">Gateway State</th>
+          <th style="width: 60%;">Description & Handling Behavior</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-success">201 CREATED</span></td>
+          <td><span class="code-snippet">PROCESSED</span></td>
+          <td>Order successfully validated, assigned internal ID <span class="code-snippet">SP-2026-XXXXX</span>, committed to MySQL, and S3 download task queued.</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-indigo">200 OK</span></td>
+          <td><span class="code-snippet">DUPLICATE</span></td>
+          <td>Payload hash or Peecho Order ID already received. Acknowledged safely without re-queuing duplicate physical production.</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-danger">400 BAD REQUEST</span></td>
+          <td><span class="code-snippet">SCHEMA_ERROR</span></td>
+          <td>Malformed JSON body or missing mandatory fields (<span class="code-snippet">order_id</span>, <span class="code-snippet">items</span>, or <span class="code-snippet">pdf_artwork_url</span>).</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-danger">401 UNAUTHORIZED</span></td>
+          <td><span class="code-snippet">AUTH_FAILED</span></td>
+          <td>Missing or mismatched HMAC-SHA256 signature in <span class="code-snippet">X-Peecho-Signature</span> header.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ========================================================================
+       3. OUTBOUND SHIPMENT CALLBACK
+       ======================================================================== -->
+  <section class="page-break-inside-avoid">
+    <h1>3. Outbound Shipment Callback (`POST /v2/orders/{id}/shipment`)</h1>
+    <p>
+      Upon physical completion, inspection, and parcel weighing at the Dispatch Station, the operator scans the order barcode into the Silver Point Dispatch Console. Within <strong>&lt; 5.0 seconds</strong>, Celery dispatches a reverse tracking callback to Peecho:
+    </p>
+
+    <div class="callout callout-success">
+      <div class="callout-title">
+        <span>&#8644;</span> Reverse Sync Target: <span class="code-snippet">POST https://api.peecho.com/v2/orders/{peecho_order_id}/shipment</span>
+      </div>
+      Headers: <span class="code-snippet">Authorization: Bearer &lt;PEECHO_API_KEY&gt;</span> &bull; <span class="code-snippet">X-Peecho-Button-Key: &lt;BUTTON_KEY&gt;</span> &bull; <span class="code-snippet">Content-Type: application/json</span>
+    </div>
+
+    <!-- OUTBOUND SHIPMENT JSON SCHEMA -->
+    <div class="code-container">
+      <div class="code-header">
+        <span>OUTBOUND SHIPMENT CALLBACK PAYLOAD SCHEMA</span>
+        <span>POST /v2/orders/{id}/shipment</span>
+      </div>
+      <div class="code-body">{
+  <span class="json-key">"peecho_order_id"</span>: <span class="json-str">"PEECHO-881920"</span>,
+  <span class="json-key">"silverpoint_order_number"</span>: <span class="json-str">"SP-2026-10492"</span>,
+  <span class="json-key">"carrier"</span>: <span class="json-str">"DHL Express"</span>,
+  <span class="json-key">"carrier_code"</span>: <span class="json-str">"DHL"</span>,
+  <span class="json-key">"tracking_code"</span>: <span class="json-str">"3491029410"</span>,
+  <span class="json-key">"shipment_date"</span>: <span class="json-str">"2026-11-03T14:30:00Z"</span>,
+  <span class="json-key">"tracking_url"</span>: <span class="json-str">"https://www.dhl.com/global-en/home/tracking/tracking-express.html?submit=1&tracking-id=3491029410"</span>,
+  <span class="json-key">"awb_url"</span>: <span class="json-str">"https://silverpoint-pod-artwork-vault.s3.eu-west-1.amazonaws.com/awb/AWB-3491029410.pdf"</span>,
+  <span class="json-key">"shipped_at"</span>: <span class="json-str">"2026-11-03T14:30:00Z"</span>,
+  <span class="json-key">"weight_in_grams"</span>: <span class="json-num">850</span>,
+  <span class="json-key">"notes"</span>: <span class="json-str">"Dispatched via DHL Express from Silver Point International POD Hub (Dubai)"</span>
+}</div>
+    </div>
+  </section>
+
+  <!-- ========================================================================
+       4. ERROR HANDLING & EXPONENTIAL BACKOFF
+       ======================================================================== -->
+  <section class="page-break-inside-avoid">
+    <h1>4. Error Handling & Exponential Backoff Architecture</h1>
+    <p>
+      To defend against transient network failures, Peecho maintenance windows, or DNS interruptions, Silver Point's Celery task worker executes a truncated exponential backoff retry policy:
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 20%;">Retry Attempt</th>
+          <th style="width: 25%;">Delay Window</th>
+          <th style="width: 55%;">Worker Behavior & Failover Mitigation</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Attempt 1</strong></td>
+          <td><span class="code-snippet">+30 seconds</span></td>
+          <td>Immediate fast retry for transient socket resets or TLS negotiation drops.</td>
+        </tr>
+        <tr>
+          <td><strong>Attempt 2</strong></td>
+          <td><span class="code-snippet">+2 minutes (120s)</span></td>
+          <td>Secondary retry accommodating Peecho gateway rolling deployments.</td>
+        </tr>
+        <tr>
+          <td><strong>Attempt 3</strong></td>
+          <td><span class="code-snippet">+10 minutes (600s)</span></td>
+          <td>Intermediate retry window; warning alert logged to Order Notification Center.</td>
+        </tr>
+        <tr>
+          <td><strong>Attempt 4</strong></td>
+          <td><span class="code-snippet">+1 hour (3600s)</span></td>
+          <td>Final automated long-poll attempt prior to Dead-Letter Queue (DLQ) escalation.</td>
+        </tr>
+        <tr>
+          <td><strong>DLQ Escalation</strong></td>
+          <td><span class="code-snippet">Manual Reconciliation</span></td>
+          <td>Shipment flagged with <span class="code-snippet">peecho_synced = False</span>. Staff alerted via Notification Center for 1-click manual retry upon Peecho service restoration.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">
+        <span>&#9888;</span> Idempotency & Safe Retry Guarantee
+      </div>
+      All outbound shipment requests include the immutable <span class="code-snippet">peecho_order_id</span>. Peecho's gateway can safely receive duplicate submissions without creating multiple shipments or misaligning parcel states.
+    </div>
+  </section>
+
+  <!-- ========================================================================
+       5. AUTOMATED COURIER LIVE TRACKING POLLER
+       ======================================================================== -->
+  <section class="page-break-inside-avoid">
+    <h1>5. Automated Courier Live Tracking Poller</h1>
+    <p>
+      Silver Point's Celery Beat scheduler executes a background tracking synchronizer (<span class="code-snippet">poll_courier_tracking_updates_task</span>) every 30 minutes, querying carrier REST APIs for in-transit parcels:
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 25%;">Carrier Network</th>
+          <th style="width: 25%;">API Gateway Integration</th>
+          <th style="width: 25%;">Milestones Polled</th>
+          <th style="width: 25%;">Peecho Sync Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>DHL Express</strong></td>
+          <td>DHL Express MyDHL API v2</td>
+          <td>Pickup &bull; In Transit &bull; Delivered</td>
+          <td>Pushes <span class="code-snippet">DELIVERED</span> milestone sync.</td>
+        </tr>
+        <tr>
+          <td><strong>Aramex</strong></td>
+          <td>Aramex Location & Tracking API</td>
+          <td>Out for Delivery &bull; Delivered</td>
+          <td>Updates consignee proof-of-delivery time.</td>
+        </tr>
+        <tr>
+          <td><strong>FedEx International</strong></td>
+          <td>FedEx Track API v1 (OAuth 2.0)</td>
+          <td>Customs Cleared &bull; Delivered</td>
+          <td>Records delivery signature reference.</td>
+        </tr>
+        <tr>
+          <td><strong>BlueDart / DTDC</strong></td>
+          <td>TrackDart SOAP / REST Ingress</td>
+          <td>Hub Transit &bull; Consignee Received</td>
+          <td>Closes fulfillment lifecycle.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ========================================================================
+       6. EXTENDED ENTERPRISE API MODULES
+       ======================================================================== -->
+  <section class="page-break-inside-avoid">
+    <h1>6. Extended Enterprise API Modules</h1>
+
+    <h2>6.1 Dynamic Price Calculation API Engine (`calculate_pod_quote`)</h2>
+    <p style="font-size: 8.5pt;">
+      Silver Point exposes an algorithmic quote endpoint enabling Peecho's checkout widgets to query exact real-time manufacturing costs across all product configurations:
+    </p>
+    <div class="callout callout-indigo" style="font-size: 8.5pt;">
+      <strong>Cost Formula:</strong>
+      <span class="code-snippet">Unit Cost = Base Fee + (ceil(Pages / 2) * Sheet Rate) + Binding Cost + Lamination + Foil Stamp</span>
+    </div>
+
+    <h2>6.2 Automated Invoicing & Statement of Account (SOA) Framework</h2>
+    <p style="font-size: 8.5pt;">
+      Using ReportLab, the system compiles compliant corporate Tax Invoices (<span class="code-snippet">PeechoInvoice</span>) grouping fulfilled orders into weekly or monthly billing cycles. The invoice PDF is generated dynamically, including TRN/VAT numbers, itemized line breakdowns, and payment bank coordinates in EUR and USD.
+    </p>
+
+    <h2>6.3 Odoo ERP Integration Readiness</h2>
+    <p style="font-size: 8.5pt;">
+      The gateway natively maps Peecho orders and shipments to Odoo ERP models via XML-RPC / JSON-RPC:
+    </p>
+    <div class="grid-2">
+      <div class="info-card">
+        <div class="info-card-title">Odoo `sale.order` Mapping</div>
+        <div style="font-size: 7.8pt; color: #475569; font-family: monospace;">
+          origin = f"Peecho Gateway ({order.peecho_order_id})"<br>
+          client_order_ref = order.peecho_order_id<br>
+          commitment_date = order.sla_deadline<br>
+          currency_id = order.currency
+        </div>
+      </div>
+      <div class="info-card">
+        <div class="info-card-title">Odoo `stock.picking` Delivery</div>
+        <div style="font-size: 7.8pt; color: #475569; font-family: monospace;">
+          origin = shipment.order.order_number<br>
+          carrier_tracking_ref = shipment.tracking_number<br>
+          carrier_id = shipment.carrier_name<br>
+          weight = shipment.weight_kg
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========================================================================
+       DOCUMENT FOOTER
+       ======================================================================== -->
+  <footer class="doc-footer">
+    <span>Silver Point Engineering Gateway &bull; Contract Ref: SP-PCH-API-2026-V1.0</span>
+    <span>Technical Confidential &bull; Peecho B.V. & Silver Point</span>
+  </footer>
+
+</div>
+
+</body>
+</html>
+

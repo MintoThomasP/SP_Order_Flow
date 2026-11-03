@@ -36,6 +36,7 @@ class Command(BaseCommand):
 
         statuses_data = [
             # ORDER statuses
+            {"entity_type": "ORDER", "code": "TEST_ORDER", "name": "Test Order (Sandbox)", "badge_color": "amber", "badge_bg": "#FEF3C7", "badge_text": "#B45309", "sort_order": 5, "allowed_transitions": ["RECEIVED", "PREPRESS_QUEUED", "CANCELLED"]},
             {"entity_type": "ORDER", "code": "RECEIVED", "name": "Order Received", "badge_color": "slate", "badge_bg": "#F1F5F9", "badge_text": "#475569", "sort_order": 10, "allowed_transitions": ["PREPRESS_QUEUED", "CANCELLED"]},
             {"entity_type": "ORDER", "code": "PREPRESS_QUEUED", "name": "Prepress Queued", "badge_color": "amber", "badge_bg": "#FEF3C7", "badge_text": "#D97706", "sort_order": 20, "allowed_transitions": ["PREPRESS_PASSED", "EXCEPTION_HOLD", "CANCELLED"]},
             {"entity_type": "ORDER", "code": "PREPRESS_PASSED", "name": "Prepress Approved", "badge_color": "indigo", "badge_bg": "#EEF2FF", "badge_text": "#4F46E5", "sort_order": 30, "allowed_transitions": ["BATCHED", "IN_PRODUCTION", "CANCELLED"]},

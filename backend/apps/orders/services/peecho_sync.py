@@ -74,7 +74,7 @@ def sync_order_status_to_peecho(
     }
 
     try:
-        if config.is_sandbox or "sandbox" in config.api_key or "peecho.com" in config.api_base_url:
+        if getattr(order, "is_sandbox", False) or config.is_sandbox or "sandbox" in config.api_key or "peecho.com" in config.api_base_url:
             # Verified sandbox mock response
             sync_response = {
                 "status": "success",

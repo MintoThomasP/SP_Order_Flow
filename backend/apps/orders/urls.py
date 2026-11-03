@@ -37,8 +37,9 @@ urlpatterns = [
     path("printify/register-webhooks/", PrintifyRegisterWebhooksView.as_view(), name="printify-register-webhooks"),
     path("printify/simulate-webhook/", PrintifySimulateWebhookView.as_view(), name="printify-simulate-webhook"),
 
-    # Peecho Centralized Integration & Webhook Ingestion
+    # Peecho Centralized Integration & Webhook Ingestion (Production & Staging Subdomain Routing)
     path("peecho/webhook/", PeechoWebhookView.as_view(), name="peecho-webhook"),
+    path("peecho/webhook/staging/", PeechoWebhookView.as_view(force_sandbox=True), name="peecho-webhook-staging"),
     path("peecho/simulate-webhook/", PeechoSimulateWebhookView.as_view(), name="peecho-simulate-webhook"),
     path("peecho/config/", PeechoConfigView.as_view(), name="peecho-config"),
     path("peecho/test-connection/", PeechoTestConnectionView.as_view(), name="peecho-test-connection"),

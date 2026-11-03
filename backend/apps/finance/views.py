@@ -85,14 +85,14 @@ class GenerateInvoiceView(APIView):
                 query = query | Order.objects.filter(id__in=uuid_list)
             if code_list:
                 query = query | Order.objects.filter(order_number__in=code_list) | Order.objects.filter(peecho_order_id__in=code_list)
-            orders = query.distinct()
+            orders = query.filter(is_sandbox=False).exclude(status__code="TEST_ORDER").distinct()
         else:
-            # Default: pull all recent orders
-            orders = Order.objects.all()[:20]
+            # Default: pull all recent billable production orders (excluding test/sandbox orders)
+            orders = Order.objects.filter(is_sandbox=False).exclude(status__code="TEST_ORDER")[:20]
 
         if not orders.exists():
             return Response(
-                {"success": False, "error": "No valid orders found to generate invoice."},
+                {"success": False, "error": "No valid production orders found to generate invoice. Test/Sandbox orders are excluded from real billing."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

@@ -19,7 +19,7 @@ from apps.orders.serializers import (
     PeechoPayloadLogSerializer,
     PeechoIntegrationConfigSerializer,
 )
-from apps.orders.services.ingestion import process_peecho_payload
+from apps.orders.services.ingestion import process_peecho_payload, verify_peecho_webhook_request
 from apps.orders.services.peecho_sync import sync_order_status_to_peecho
 from apps.core.models.lookups import EntityStatus
 from apps.authentication.services.audit import log_staff_action
@@ -45,9 +45,11 @@ def is_user_admin(user) -> bool:
 class PeechoWebhookView(APIView):
     """
     POST /api/v1/peecho/webhook/
-    Webhook ingestion endpoint for Peecho REST API payloads.
-    Validates API key/secret, deduplicates by payload hash, and persists Order + items.
+    Webhook ingestion endpoint for Peecho REST API payloads (supports Production and Staging subdomain routing).
+    Validates HMAC-SHA256 signature, detects Staging/Sandbox mode, deduplicates by payload hash, and persists Order + items.
     """
+    force_sandbox = False
+
     def post(self, request):
         payload = request.data
         if not isinstance(payload, dict):
@@ -57,9 +59,36 @@ class PeechoWebhookView(APIView):
             )
 
         client_ip = request.META.get("HTTP_X_FORWARDED_FOR") or request.META.get("REMOTE_ADDR")
+        verification = verify_peecho_webhook_request(request, force_sandbox=self.force_sandbox)
+
+        if not verification["is_valid"]:
+            peecho_order_id = str(payload.get("order_id") or payload.get("id") or payload.get("peecho_order_id", "")).strip()
+            log_entry = PeechoPayloadLog.objects.create(
+                peecho_order_id=peecho_order_id,
+                event_type=payload.get("event", "order.created"),
+                raw_payload=payload,
+                status="INVALID_AUTH",
+                is_sandbox=verification["is_sandbox"],
+                error_message=verification["reason"],
+                ip_address=client_ip,
+            )
+            return Response(
+                {
+                    "error": verification["reason"],
+                    "status": "INVALID_AUTH",
+                    "log_id": str(log_entry.id),
+                },
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        is_sandbox = verification["is_sandbox"]
 
         try:
-            order, log_entry, is_duplicate = process_peecho_payload(payload, client_ip=client_ip)
+            order, log_entry, is_duplicate = process_peecho_payload(
+                payload,
+                client_ip=client_ip,
+                is_sandbox=is_sandbox,
+            )
 
             if is_duplicate:
                 return Response(
@@ -67,6 +96,8 @@ class PeechoWebhookView(APIView):
                         "message": "Duplicate payload ignored.",
                         "log_id": str(log_entry.id),
                         "status": "DUPLICATE",
+                        "environment": verification["environment"],
+                        "is_sandbox": is_sandbox,
                         "order_number": order.order_number if order else None,
                     },
                     status=status.HTTP_200_OK,
@@ -74,9 +105,11 @@ class PeechoWebhookView(APIView):
 
             return Response(
                 {
-                    "message": "Peecho order successfully ingested.",
+                    "message": "Peecho sandbox test order ingested." if is_sandbox else "Peecho order successfully ingested.",
                     "log_id": str(log_entry.id),
                     "status": "PROCESSED",
+                    "environment": verification["environment"],
+                    "is_sandbox": is_sandbox,
                     "order": OrderSerializer(order).data,
                 },
                 status=status.HTTP_201_CREATED,
@@ -195,11 +228,19 @@ class OrderSimulateView(APIView):
                     }
                 ],
             }
-            order, log_entry, is_duplicate = process_peecho_payload(sample_payload, client_ip=client_ip)
+            verification = verify_peecho_webhook_request(request)
+            sim_is_sandbox = bool(verification["is_sandbox"] or request.data.get("is_sandbox"))
+            order, log_entry, is_duplicate = process_peecho_payload(
+                sample_payload,
+                client_ip=client_ip,
+                is_sandbox=sim_is_sandbox,
+            )
             return Response(
                 {
                     "message": "Simulated Peecho Webhook Ingested Successfully.",
                     "channel": "Peecho POD",
+                    "environment": "STAGING_SANDBOX" if sim_is_sandbox else "PRODUCTION",
+                    "is_sandbox": sim_is_sandbox,
                     "payload_sent": sample_payload,
                     "order": OrderSerializer(order).data if order else None,
                     "log_status": log_entry.status,
@@ -502,6 +543,13 @@ class OrderViewSet(viewsets.ModelViewSet):
             elif is_external_pod.lower() in ("false", "0"):
                 qs = qs.filter(is_external_pod=False)
 
+        is_sandbox_param = self.request.query_params.get("is_sandbox")
+        if is_sandbox_param is not None:
+            if is_sandbox_param.lower() in ("true", "1"):
+                qs = qs.filter(Q(is_sandbox=True) | Q(status__code="TEST_ORDER"))
+            elif is_sandbox_param.lower() in ("false", "0"):
+                qs = qs.filter(is_sandbox=False).exclude(status__code="TEST_ORDER")
+
         sla_urgency = self.request.query_params.get("urgency")
         now = timezone.now()
         if sla_urgency == "critical": # < 4 hours remaining
@@ -517,13 +565,13 @@ class OrderViewSet(viewsets.ModelViewSet):
         if station_param:
             station_lower = station_param.strip().lower()
             if station_lower in ["prepress", "preflight"]:
-                qs = qs.filter(status__code__in=["RECEIVED", "PREPRESS_QUEUED", "PENDING_PREPRESS", "PREPRESS_PASSED", "EXCEPTION_HOLD"])
+                qs = qs.filter(status__code__in=["RECEIVED", "PREPRESS_QUEUED", "PENDING_PREPRESS", "PREPRESS_PASSED", "EXCEPTION_HOLD"], is_sandbox=False)
             elif station_lower in ["production", "press", "shopfloor"]:
-                qs = qs.filter(status__code__in=["PREPRESS_PASSED", "BATCHED", "IN_PRODUCTION", "PRINTING", "QUALITY_AUDIT", "PRODUCTION_COMPLETED", "PACKED"])
+                qs = qs.filter(status__code__in=["PREPRESS_PASSED", "BATCHED", "IN_PRODUCTION", "PRINTING", "QUALITY_AUDIT", "PRODUCTION_COMPLETED", "PACKED"], is_sandbox=False).exclude(status__code="TEST_ORDER")
             elif station_lower in ["shipping", "dispatch", "logistics"]:
-                qs = qs.filter(status__code__in=["PACKED", "READY_FOR_DISPATCH", "DISPATCHED", "IN_TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED", "EXCEPTION_HOLD"])
+                qs = qs.filter(status__code__in=["PACKED", "READY_FOR_DISPATCH", "DISPATCHED", "IN_TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED", "EXCEPTION_HOLD"], is_sandbox=False).exclude(status__code="TEST_ORDER")
             elif station_lower in ["finance", "billing"]:
-                qs = qs.filter(status__code__in=["DISPATCHED", "DELIVERED", "EXCEPTION_HOLD"])
+                qs = qs.filter(status__code__in=["DISPATCHED", "DELIVERED", "EXCEPTION_HOLD"], is_sandbox=False).exclude(status__code="TEST_ORDER")
 
         # Enforce pipeline stage boundary for non-admin operational designations
         user = self.request.user
@@ -538,16 +586,16 @@ class OrderViewSet(viewsets.ModelViewSet):
             role_code = str(role_code).strip().upper()
 
             if role_code == "SHOPFLOOR_OPERATOR":
-                # Print & bindery operators must NEVER see unapproved prepress orders
-                qs = qs.exclude(status__code__in=["RECEIVED", "PREPRESS_QUEUED", "PENDING_PREPRESS"])
+                # Print & bindery operators must NEVER see unapproved prepress orders or test orders
+                qs = qs.filter(is_sandbox=False).exclude(status__code__in=["RECEIVED", "PREPRESS_QUEUED", "PENDING_PREPRESS", "TEST_ORDER"])
             elif role_code == "PRODUCTION_MANAGER":
-                # Production manager only sees orders that have reached/passed prepress approval
-                qs = qs.exclude(status__code__in=["RECEIVED", "PREPRESS_QUEUED", "PENDING_PREPRESS"])
+                # Production manager only sees non-sandbox orders that have reached/passed prepress approval
+                qs = qs.filter(is_sandbox=False).exclude(status__code__in=["RECEIVED", "PREPRESS_QUEUED", "PENDING_PREPRESS", "TEST_ORDER"])
             elif role_code in ["DISPATCH_SPECIALIST", "DISPATCH_FINANCE_SPECIALIST"]:
-                # Shipping specialists only see orders that are packed or ready for dispatch
-                qs = qs.filter(status__code__in=["PACKED", "READY_FOR_DISPATCH", "DISPATCHED", "IN_TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED", "EXCEPTION_HOLD"])
+                # Shipping specialists only see live orders that are packed or ready for dispatch
+                qs = qs.filter(status__code__in=["PACKED", "READY_FOR_DISPATCH", "DISPATCHED", "IN_TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED", "EXCEPTION_HOLD"], is_sandbox=False).exclude(status__code="TEST_ORDER")
             elif role_code == "FINANCE_SPECIALIST":
-                qs = qs.filter(status__code__in=["DISPATCHED", "DELIVERED", "EXCEPTION_HOLD"])
+                qs = qs.filter(status__code__in=["DISPATCHED", "DELIVERED", "EXCEPTION_HOLD"], is_sandbox=False).exclude(status__code="TEST_ORDER")
 
         ordering_param = self.request.query_params.get("ordering")
         if ordering_param:
@@ -926,14 +974,16 @@ class OrderViewSet(viewsets.ModelViewSet):
     def order_metrics(self, request):
         """
         GET /api/v1/orders/metrics/
-        High level metrics for dashboard KPI cards.
+        High level metrics for dashboard KPI cards (excludes sandbox/test orders from active production KPIs).
         """
         now = timezone.now()
-        total_orders = Order.objects.count()
-        in_prepress = Order.objects.filter(status__code__in=["RECEIVED", "PREPRESS_QUEUED"]).count()
-        in_production = Order.objects.filter(status__code__in=["IN_PRODUCTION", "PRINTING"]).count()
-        ready_dispatch = Order.objects.filter(status__code__in=["PACKED", "QUALITY_AUDIT"]).count()
-        sla_at_risk = Order.objects.filter(sla_deadline__lte=now + timedelta(hours=6)).exclude(status__is_terminal=True).count()
+        live_orders = Order.objects.filter(is_sandbox=False).exclude(status__code="TEST_ORDER")
+        total_orders = live_orders.count()
+        in_prepress = live_orders.filter(status__code__in=["RECEIVED", "PREPRESS_QUEUED"]).count()
+        in_production = live_orders.filter(status__code__in=["IN_PRODUCTION", "PRINTING"]).count()
+        ready_dispatch = live_orders.filter(status__code__in=["PACKED", "QUALITY_AUDIT"]).count()
+        sla_at_risk = live_orders.filter(sla_deadline__lte=now + timedelta(hours=6)).exclude(status__is_terminal=True).count()
+        sandbox_test_orders = Order.objects.filter(Q(is_sandbox=True) | Q(status__code="TEST_ORDER")).count()
 
         return Response({
             "total_orders": total_orders,
@@ -941,6 +991,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             "in_production": in_production,
             "ready_dispatch": ready_dispatch,
             "sla_at_risk": sla_at_risk,
+            "sandbox_test_orders": sandbox_test_orders,
         })
 
 

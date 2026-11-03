@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Peecho Order Processing & Production Workflow Manual - Silver Point</title>
+  <style>
+    /* ==========================================================================
+       CSS Reset & Typography for High-Resolution Printing & Browser Display
+       ========================================================================== */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    @page {
+      size: A4 portrait;
+      margin: 14mm 12mm 16mm 12mm;
+      @bottom-right {
+        content: "Page " counter(page) " of " counter(pages);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        font-size: 8pt;
+        color: #64748b;
+      }
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 9.5pt;
+      line-height: 1.5;
+      color: #0f172a;
+      background-color: #f8fafc;
+      padding: 24px;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .document-container {
+      max-width: 900px;
+      margin: 0 auto;
+      background-color: #ffffff;
+      padding: 40px 48px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+    }
+
+    /* Print Overrides */
+    @media print {
+      body {
+        background-color: #ffffff;
+        padding: 0;
+      }
+      .document-container {
+        border: none;
+        box-shadow: none;
+        padding: 0;
+        max-width: 100%;
+      }
+      .page-break {
+        page-break-before: always;
+      }
+      .page-break-inside-avoid {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+      .no-print {
+        display: none !important;
+      }
+    }
+
+    /* ==========================================================================
+       Header & Meta Section
+       ========================================================================== */
+    .doc-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 2px solid #0284c7;
+      padding-bottom: 18px;
+      margin-bottom: 24px;
+    }
+
+    .brand-title {
+      font-size: 19pt;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: #0369a1;
+      text-transform: uppercase;
+      line-height: 1.1;
+    }
+
+    .brand-subtitle {
+      font-size: 10pt;
+      font-weight: 600;
+      color: #0f172a;
+      margin-top: 4px;
+      letter-spacing: 0.2px;
+    }
+
+    .brand-tagline {
+      font-size: 8pt;
+      color: #64748b;
+      margin-top: 2px;
+    }
+
+    .meta-box {
+      background-color: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 8pt;
+      min-width: 250px;
+      text-align: right;
+    }
+
+    .meta-box .meta-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 3px;
+    }
+
+    .meta-box .meta-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .meta-label {
+      font-weight: 600;
+      color: #166534;
+      text-transform: uppercase;
+      font-size: 7.5pt;
+      margin-right: 12px;
+    }
+
+    .meta-val {
+      font-weight: 700;
+      color: #0f172a;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    /* ==========================================================================
+       Document Headings & Callouts
+       ========================================================================== */
+    h1 {
+      font-size: 15pt;
+      font-weight: 800;
+      color: #0f172a;
+      margin: 22px 0 12px 0;
+      border-bottom: 1.5px solid #e2e8f0;
+      padding-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    h2 {
+      font-size: 11.5pt;
+      font-weight: 700;
+      color: #0369a1;
+      margin: 16px 0 8px 0;
+    }
+
+    h3 {
+      font-size: 10pt;
+      font-weight: 700;
+      color: #334155;
+      margin: 12px 0 6px 0;
+    }
+
+    p {
+      margin-bottom: 10px;
+      text-align: justify;
+      color: #334155;
+    }
+
+    .section-lead {
+      font-size: 10pt;
+      color: #1e293b;
+      font-weight: 500;
+      margin-bottom: 14px;
+      line-height: 1.6;
+    }
+
+    /* Badges & Tags */
+    .badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 7.5pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-primary { background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
+    .badge-success { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+    .badge-warning { background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
+    .badge-danger  { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
+
+    /* Step Badges */
+    .step-badge {
+      background: #0284c7;
+      color: #ffffff;
+      padding: 2px 9px;
+      border-radius: 12px;
+      font-size: 8pt;
+      font-weight: 800;
+      display: inline-block;
+      margin-right: 6px;
+    }
+
+    /* Callout Boxes */
+    .callout {
+      border-left: 4px solid #0284c7;
+      background-color: #f0f9ff;
+      padding: 10px 14px;
+      border-radius: 0 6px 6px 0;
+      margin: 12px 0;
+      font-size: 9pt;
+      color: #0369a1;
+    }
+
+    .callout.callout-success {
+      border-left-color: #16a34a;
+      background-color: #f0fdf4;
+      color: #166534;
+    }
+
+    .callout.callout-warning {
+      border-left-color: #f59e0b;
+      background-color: #fffbeb;
+      color: #92400e;
+    }
+
+    .callout.callout-danger {
+      border-left-color: #dc2626;
+      background-color: #fef2f2;
+      color: #991b1b;
+    }
+
+    .callout-title {
+      font-weight: 700;
+      margin-bottom: 3px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* ==========================================================================
+       ASCII Diagram Container
+       ========================================================================== */
+    .diagram-container {
+      background-color: #0f172a;
+      color: #f8fafc;
+      padding: 16px;
+      border-radius: 6px;
+      margin: 14px 0 18px 0;
+      overflow-x: auto;
+      border: 1px solid #1e293b;
+    }
+
+    .diagram-container pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 7.2pt;
+      line-height: 1.28;
+      white-space: pre;
+    }
+
+    /* ==========================================================================
+       Tables
+       ========================================================================== */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 18px 0;
+      font-size: 8.5pt;
+    }
+
+    th, td {
+      border: 1px solid #cbd5e1;
+      padding: 7px 10px;
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    th {
+      background-color: #f1f5f9;
+      color: #0f172a;
+      font-weight: 700;
+      text-transform: uppercase;
+      font-size: 7.5pt;
+      letter-spacing: 0.4px;
+    }
+
+    tr:nth-child(even) td {
+      background-color: #f8fafc;
+    }
+
+    .table-subtext {
+      font-size: 7.5pt;
+      color: #64748b;
+      margin-top: 2px;
+    }
+
+    /* ==========================================================================
+       Step Card Layout
+       ========================================================================== */
+    .step-card {
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 14px 16px;
+      margin-bottom: 14px;
+      background-color: #ffffff;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+    }
+
+    .step-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      border-bottom: 1px solid #f1f5f9;
+      padding-bottom: 6px;
+    }
+
+    .step-card-title {
+      font-size: 10.5pt;
+      font-weight: 700;
+      color: #0f172a;
+      display: flex;
+      align-items: center;
+    }
+
+    .step-details-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-top: 8px;
+      font-size: 8.5pt;
+    }
+
+    .detail-item {
+      background-color: #f8fafc;
+      padding: 6px 10px;
+      border-radius: 4px;
+      border: 1px solid #edf2f7;
+    }
+
+    .detail-item-title {
+      font-weight: 700;
+      color: #475569;
+      font-size: 7.5pt;
+      text-transform: uppercase;
+      margin-bottom: 2px;
+    }
+
+    .code-snippet {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 8pt;
+      background: #f1f5f9;
+      padding: 2px 5px;
+      border-radius: 3px;
+      color: #0f172a;
+      border: 1px solid #e2e8f0;
+    }
+
+    /* ==========================================================================
+       Authorization Block
+       ========================================================================== */
+    .auth-section {
+      margin-top: 28px;
+      border-top: 2px solid #0f172a;
+      padding-top: 16px;
+    }
+
+    .auth-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-top: 16px;
+    }
+
+    .auth-card {
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 16px;
+      background-color: #ffffff;
+    }
+
+    .auth-card-title {
+      font-size: 9.5pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #0369a1;
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 6px;
+      margin-bottom: 12px;
+    }
+
+    .auth-line {
+      margin-bottom: 12px;
+      font-size: 8.5pt;
+    }
+
+    .auth-line-label {
+      font-weight: 600;
+      color: #64748b;
+      margin-bottom: 2px;
+      display: block;
+      font-size: 7.5pt;
+      text-transform: uppercase;
+    }
+
+    .auth-signature-box {
+      height: 52px;
+      border-bottom: 1px dashed #94a3b8;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: flex-end;
+      padding-bottom: 4px;
+      color: #94a3b8;
+      font-style: italic;
+      font-size: 8pt;
+    }
+
+    .stamp-box {
+      border: 1px dashed #cbd5e1;
+      height: 70px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #94a3b8;
+      font-size: 8pt;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 10px;
+      background-color: #f8fafc;
+    }
+
+    /* Footer */
+    .doc-footer {
+      margin-top: 24px;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 7.5pt;
+      color: #64748b;
+    }
+  </style>
+</head>
+<body>
+
+<div class="document-container">
+
+  <!-- ========================================================================
+       1. DOCUMENT HEADER & META
+       ======================================================================== -->
+  <header class="doc-header">
+    <div>
+      <div class="brand-title">Silver Point Printing & Digital Solutions</div>
+      <div class="brand-subtitle">Peecho Order Processing & Production Workflow Manual</div>
+      <div class="brand-tagline">Industrial Print-on-Demand (POD) Manufacturing Execution & Gateway Standard</div>
+    </div>
+    <div class="meta-box">
+      <div class="meta-row">
+        <span class="meta-label">Document Ref:</span>
+        <span class="meta-val">SP-PCH-SOP-2026-V1.0</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">Effective Date:</span>
+        <span class="meta-val">03-NOV-2026</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">Issuer:</span>
+        <span class="meta-val">Silver Point POD Hub (UAE/India)</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">Recipient:</span>
+        <span class="meta-val">Peecho B.V. (Netherlands)</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">Classification:</span>
+        <span class="meta-val">Formal Operational Procedure</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ========================================================================
+       2. EXECUTIVE WORKFLOW OVERVIEW
+       ======================================================================== -->
+  <section>
+    <h1>1. Executive Workflow Overview</h1>
+    <p class="section-lead">
+      This Standard Operating Procedure (SOP) defines the operational, technical, and quality frameworks governing all Print-on-Demand (POD) orders received by <strong>Silver Point Printing & Digital Solutions L.L.C.</strong> from <strong>Peecho B.V. (Amsterdam, Netherlands)</strong>. Fulfilling orders across the Gulf Cooperation Council (GCC), Middle East, and Indian subcontinent, Silver Point combines cloud-native REST automation with high-precision digital press manufacturing.
+    </p>
+
+    <div class="callout callout-success page-break-inside-avoid">
+      <div class="callout-title">
+        <span>&#10003;</span> Core Manufacturing Principle: Barcode-Verified Custody & Zero-Defect Production
+      </div>
+      Every individual photobook, magazine, and custom book printed for Peecho is assigned a unique cryptographic payload hash, an internal tracker (<span class="code-snippet">SP-2026-XXXXX</span>), and an encrypted 2D QR Job Ticket. Workstation operators scan items at every machine interface, providing Peecho with automated, auditable milestone sync from webhook ingestion to carrier waybill handoff.
+    </div>
+
+    <h2>1.1 Production & Staging Environment Matrix</h2>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 22%;">Environment</th>
+          <th style="width: 28%;">Portal Domain</th>
+          <th style="width: 30%;">Inbound Webhook URL</th>
+          <th style="width: 20%;">Order Tagging & Isolation</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Production (Live)</strong></td>
+          <td><span class="code-snippet">https://orderflow.silverpointprint.com</span></td>
+          <td><span class="code-snippet">https://orderflow.silverpointprint.com/api/v1/peecho/webhook/</span></td>
+          <td>Live Press & Billing (<span class="code-snippet">is_sandbox = False</span>)</td>
+        </tr>
+        <tr>
+          <td><strong>Staging (Sandbox)</strong></td>
+          <td><span class="code-snippet">https://staging.orderflow.silverpointprint.com</span></td>
+          <td><span class="code-snippet">https://staging.orderflow.silverpointprint.com/api/v1/peecho/webhook/</span></td>
+          <td>Isolated Test Order (<span class="code-snippet">is_sandbox = True</span>, <span class="code-snippet">TEST_ORDER</span>)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- HIGH-CONTRAST ASCII WORKFLOW ARCHITECTURE -->
+    <div class="diagram-container page-break-inside-avoid">
+      <pre>
+========================================================================================================================
+                          SILVER POINT / PEECHO HIGH-PRECISION POD MANUFACTURING TOPOLOGY
+========================================================================================================================
+
+ [ PEECHO CLOUD ]              [ INGESTION ENGINE ]                [ CLOUD S3 VAULT ]              [ SHOPFLOOR PRESS & FINISHING ]
+ (Amsterdam, NL)            (Django REST / Celery)             (silverpoint-pod-vault)                 (HP Indigo & Horizon)
+       |                              |                                  |                                     |
+       |-- 1. POST Webhook ---------->|                                  |                                     |
+       |   (Payload + HMAC-SHA256)    |-- Validate HMAC & Dedup Hash     |                                     |
+       |                              |-- Assign SP-2026-XXXXX ID        |                                     |
+       |<- 2. HTTP 201 ACK (<2s) -----|                                  |                                     |
+       |                              |                                  |                                     |
+       |                              |-- 3. Stream High-Res PDF ------->|                                     |
+       |                              |   (Chunked S3 Multipart)         |-- Run Auto Preflight (300 DPI)      |
+       |                              |                                  |-- Verify Bleed (3.0mm) & CMYK       |
+       |                              |                                  |-- Calculate Precise Spine Thickness |
+       |                              |                                  |                                     |
+       |                              |-- 4. Status: IN_PREFLIGHT ------>|                                     |
+       |<- 5. Peecho Status Callback -|                                  |                                     |
+       |                              |                                  |                                     |
+       |                              |-- 6. Dynamic Imposition Engine --+------------------------------------>|
+       |                              |   (Group by GSM & Trim Size)                                           |-- Generate QR Job Ticket
+       |                              |                                                                        |-- Station 1: HP Indigo Print
+       |<- 7. Status: PRINTING -------|<-----------------------------------------------------------------------|   (Status: PRINTING)
+       |                              |                                                                        |-- Station 2: Polar Guillotine
+       |                              |                                                                        |-- Station 3: Horizon PUR Bind
+       |                              |                                                                        |   (Status: IN_PRODUCTION)
+       |                              |                                                                        |-- Station 4: 10-Point QC Audit
+       |                              |                                                                        |   (Pass -> Status: PACKED)
+       |                              |                                                                        |
+ [ REVERSE TELEMETRY ]                |-- 8. Courier AWB API Request ----------------------------------------->|-- Station 5: Dispatch Console
+       |                              |   (DHL / Aramex / FedEx)                                               |   (Scan AWB & Weigh Parcel)
+       |<- 9. POST Shipment Callback -|<-----------------------------------------------------------------------|-- Stream AWB to AWS S3
+       |   (AWB, Carrier, Track URL)  |   Sync Executed within < 5s post-scan                                  |   (Status: DISPATCHED)
+========================================================================================================================
+      </pre>
+    </div>
+  </section>
+
+  <!-- ========================================================================
+       3. END-TO-END WORKFLOW STEP-BY-STEP
+       ======================================================================== -->
+  <section>
+    <h1>2. End-to-End Workflow Step-by-Step</h1>
+
+    <!-- Step 1 -->
+    <div class="step-card page-break-inside-avoid">
+      <div class="step-card-header">
+        <div class="step-card-title">
+          <span class="step-badge">STEP 1</span>
+          Inbound Webhook Order Reception & Ingest Validation
+        </div>
+        <span class="badge badge-primary">Latency: &lt; 400 ms</span>
+      </div>
+      <p>
+        Orders submitted through Peecho's e-commerce widgets or client APIs hit Silver Point's hardened webhook endpoint: <span class="code-snippet">POST /api/v1/peecho/webhook/</span>.
+      </p>
+      <div class="step-details-grid">
+        <div class="detail-item">
+          <div class="detail-item-title">HMAC-SHA256 Security</div>
+          The raw HTTP body is cryptographically checked against header <span class="code-snippet">X-Peecho-Signature</span> using the shared integration secret. Unauthorized requests are immediately blocked with HTTP 401.
+        </div>
+        <div class="detail-item">
+          <div class="detail-item-title">Deduplication Guard</div>
+          A SHA-256 payload hash is compared against <span class="code-snippet">PeechoPayloadLog</span>. Identical payload submissions return HTTP 200 with status <span class="code-snippet">DUPLICATE</span>, preventing accidental double production.
+        </div>
+        <div class="detail-item">
+          <div class="detail-item-title">Dynamic SLA Timer Engine</div>
+          The priority tier is parsed to initialize a countdown clock: <span class="code-snippet">RUSH_8H</span> (8 Hours), <span class="code-snippet">EXPRESS_24H</span> (24 Hours), or <span class="code-snippet">STANDARD_72H</span> (48–72 Hours).
+        </div>
+        <div class="detail-item">
+          <div class="detail-item-title">Synchronous ACK Return</div>
+          Silver Point responds with HTTP 201 Created and the internal tracking identifier (<span class="code-snippet">SP-2026-XXXXX</span>) within <strong>&lt; 400 milliseconds</strong> (guaranteed SLA &lt; 2.0s).
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="step-card page-break-inside-avoid">
+      <div class="step-card-header">
+        <div class="step-card-title">
+          <span class="step-badge">STEP 2</span>
+          S3 PDF Download & Prepress Artwork Verification
+        </div>
+        <span class="badge badge-success">Automated Preflight</span>
+      </div>
+      <p>
+        An asynchronous Celery task streams high-resolution print files (<span class="code-snippet">pdf_artwork_url</span> and <span class="code-snippet">pdf_cover_url</span>) directly to the encrypted S3 bucket <span class="code-snippet">silverpoint-pod-artwork-vault</span> without overloading application memory.
+      </p>
+      <div class="step-details-grid">
+        <div class="detail-item">
+          <div class="detail-item-title">Resolution & Color Check</div>
+          Automated preflight checks that raster graphics meet or exceed <strong>300 DPI</strong> at full scale. Color spaces are verified for CMYK (Fogra 39 / Fogra 51). RGB files trigger an automated color conversion audit.
+        </div>
+        <div class="detail-item">
+          <div class="detail-item-title">Bleed & Safety Margins</div>
+          Verifies that a mandatory <strong>3.0 mm bleed box</strong> exists on all trim sides. Text safe margin requires 5.0 mm clearance from the cut edge to prevent content loss during high-speed cutting.
+        </div>
+        <div class="detail-item">
+          <div class="detail-item-title">Spine Caliper Formula</div>
+          Dynamically computes exact spine thickness:
+          <span class="code-snippet">Spine (mm) = (Page Count / 2) * Caliper + Board</span>
+          (Hardcover board: 3.0mm; Softcover board: 0.8mm; 200gsm Silk = 0.200mm/leaf).
+        </div>
+        <div class="detail-item">
+          <div class="detail-item-title">Prepress Operator Gate</div>
+          Prepress technicians conduct a visual overlay inspection in the Next.js Workspace. Approving advances the order to <span class="code-snippet">PREPRESS_PASSED</span>; anomalies trigger <span class="code-snippet">EXCEPTION_HOLD</span>.
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="step-card page-break-inside-avoid">
+      <div class="step-card-header">
+        <div class="step-card-title">
+          <span class="step-badge">STEP 3</span>
+          Production Imposition Batching & QR Job Ticket Generation
+        </div>
+        <span class="badge badge-primary">Press Batching</span>
+      </div>
+      <p>
+        Orders approved for print are grouped into optimized production batches (<span class="code-snippet">ProductionBatch</span>) to maximize sheet yields on our HP Indigo 12000 (B2) and Canon press lines while minimizing substrate changeovers.
+      </p>
+      <div class="step-details-grid">
+        <div class="detail-item">
+          <div class="detail-item-title">Clustering Parameters</div>
+          Orders are clustered by <strong>Substrate Weight</strong> (e.g. 200gsm Silk Inner + 350gsm Gloss Cover), <strong>Trim Dimensions</strong> (A4, A5, Square 210x210mm), and <strong>Binding Format</strong>.
+        </div>
+        <div class="detail-item">
+          <div class="detail-item-title">Printable A4 QR Job Ticket</div>
+          A machine-readable PDF Job Ticket is generated using ReportLab, embedding a 2D QR code (<span class="code-snippet">SP-POD-BATCH:&lt;id&gt;|PRESS:&lt;machine&gt;</span>) and 1D Code 128 barcodes for each order item.
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 4 -->
+    <div class="step-card page-break-inside-avoid">
+      <div class="step-card-header">
+        <div class="step-card-title">
+          <span class="step-badge">STEP 4</span>
+          Shopfloor Execution Tracking via Barcode & Mobile PWA Scanning
+        </div>
+        <span class="badge badge-warning">Floor Execution</span>
+      </div>
+      <p>
+        Operators at each physical machine station update order milestones using wireless industrial 2D scanners or mobile PWA cameras running the Silver Point Floor Scanner:
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 25%;">Shopfloor Station</th>
+            <th style="width: 25%;">Hardware / Tooling</th>
+            <th style="width: 25%;">Internal Milestone</th>
+            <th style="width: 25%;">Peecho Remote Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>1. Digital Press</strong></td>
+            <td>HP Indigo 12000 / Canon imagePRESS</td>
+            <td><span class="code-snippet">PRINTING</span></td>
+            <td><span class="badge badge-primary">PRINTING</span></td>
+          </tr>
+          <tr>
+            <td><strong>2. Post-Press Cutting</strong></td>
+            <td>Polar Mohr 115 High-Speed Guillotine</td>
+            <td><span class="code-snippet">IN_PRODUCTION</span></td>
+            <td><span class="badge badge-primary">IN_PRODUCTION</span></td>
+          </tr>
+          <tr>
+            <td><strong>3. Bindery & Casing-In</strong></td>
+            <td>Horizon BQ-480 PUR / Kolbus DA 260</td>
+            <td><span class="code-snippet">IN_PRODUCTION</span></td>
+            <td><span class="badge badge-primary">IN_PRODUCTION</span></td>
+          </tr>
+          <tr>
+            <td><strong>4. Quality Audit Table</strong></td>
+            <td>10-Point Physical Inspection Table</td>
+            <td><span class="code-snippet">QUALITY_AUDIT</span></td>
+            <td><span class="badge badge-primary">QUALITY_AUDIT</span></td>
+          </tr>
+          <tr>
+            <td><strong>5. Packaging & Protective Wrap</strong></td>
+            <td>Shrink-wrapper & Corrugated Envelopes</td>
+            <td><span class="code-snippet">PACKED</span></td>
+            <td><span class="badge badge-success">PRODUCTION_COMPLETED</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Step 5 -->
+    <div class="step-card page-break-inside-avoid">
+      <div class="step-card-header">
+        <div class="step-card-title">
+          <span class="step-badge">STEP 5</span>
+          Barcode Dispatch Station & Waybill S3 Archiving
+        </div>
+        <span class="badge badge-primary">Dispatch Gateway</span>
+      </div>
+      <p>
+        At the packing bench, items are sealed in moisture-barrier wrap with protective corner guards. The operator scans the order barcode into the Dispatch Terminal:
+      </p>
+      <div class="step-details-grid">
+        <div class="detail-item">
+          <div class="detail-item-title">Automated Carrier Routing</div>
+          The system evaluates destination and SLA to select the optimal tier-1 carrier: <strong>DHL Express</strong> (Europe, Americas, Global), <strong>Aramex</strong> (GCC domestic and cross-border), <strong>FedEx</strong> (International), or <strong>BlueDart</strong> (India).
+        </div>
+        <div class="detail-item">
+          <div class="detail-item-title">Thermal Label & S3 Archiving</div>
+          An Air Waybill (AWB) is requested from the carrier API, rendering a 4x6" thermal label. The PDF waybill document is archived in S3 at <span class="code-snippet">s3://silverpoint-pod-artwork-vault/awb/</span>.
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 6 -->
+    <div class="step-card page-break-inside-avoid">
+      <div class="step-card-header">
+        <div class="step-card-title">
+          <span class="step-badge">STEP 6</span>
+          Automated Reverse Tracking API Callbacks to Peecho
+        </div>
+        <span class="badge badge-success">Sync &lt; 5.0s</span>
+      </div>
+      <p>
+        Within <strong>&lt; 5.0 seconds</strong> of waybill generation, an automated Celery background worker executes a reverse REST callback to Peecho:
+      </p>
+      <div class="callout callout-success" style="margin: 6px 0;">
+        <span class="code-snippet">POST https://api.peecho.com/v2/orders/{peecho_order_id}/shipment</span>
+      </div>
+      <p style="font-size: 8.5pt; margin-top: 6px;">
+        Payload includes <span class="code-snippet">tracking_code</span>, <span class="code-snippet">carrier</span>, <span class="code-snippet">tracking_url</span>, <span class="code-snippet">awb_url</span>, and <span class="code-snippet">shipped_at</span>. Retries utilize exponential backoff (30s, 60s, 120s, 240s, 480s) to guarantee delivery during upstream Peecho maintenance.
+      </p>
+    </div>
+  </section>
+
+  <!-- ========================================================================
+       4. QUALITY CONTROL & RE-PRINT LOGIC
+       ======================================================================== -->
+  <section class="page-break-inside-avoid">
+    <h1>3. Quality Control & Re-Print Logic</h1>
+    <p>
+      Silver Point operates under a strict Zero-Defect Quality Policy. If an item fails physical inspection at the Quality Audit Table, the following remediation procedure executes immediately:
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 20%;">Defect Category</th>
+          <th style="width: 35%;">Inspection Checkpoint & Tolerance</th>
+          <th style="width: 45%;">Immediate Remediation Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Print Surface Flaws</strong></td>
+          <td>Streaking, roller marks, banding, or color drift ($\Delta E > 2.0$).</td>
+          <td>Item rejected. Densitometer recalibration on HP Indigo; auto reprint queued.</td>
+        </tr>
+        <tr>
+          <td><strong>Cutting / Trim Errors</strong></td>
+          <td>Trim inaccuracy exceeding $\pm 0.5\text{ mm}$ or cut edge roughness.</td>
+          <td>Item rejected. Polar Mohr blade inspected; job block re-printed on rush queue.</td>
+        </tr>
+        <tr>
+          <td><strong>Bindery & Adhesion</strong></td>
+          <td>PUR spine crack, loose leaves on pull-test, or cover warp.</td>
+          <td>Item rejected. Adhesive tank temperature checked; book block remanufactured.</td>
+        </tr>
+        <tr>
+          <td><strong>Lamination Defects</strong></td>
+          <td>Bubbling, silvering, peeling, or scratches on cover wrap.</td>
+          <td>Item rejected. Thermal laminator pressure adjusted; cover re-impressed.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-warning">
+      <div class="callout-title">
+        <span>&#9888;</span> Automated Instant Re-Print Requeuing Algorithm
+      </div>
+      When a QC inspector clicks <strong>"Log Scrap & Request Reprint"</strong> on the shopfloor scanner, the system instantly logs the scrap reason in the ERP register and spawns a high-priority reprint order (<span class="code-snippet">REPRINT_QUEUED</span>). The reprint receives top priority on the HP Indigo press queue (<span class="code-snippet">RUSH_8H</span>), ensuring the overall SLA deadline remains unbreached without requiring intervention from Peecho's team.
+    </div>
+  </section>
+
+  <!-- ========================================================================
+       5. SLA & TURNAROUND COMMITMENTS
+       ======================================================================== -->
+  <section class="page-break-inside-avoid">
+    <h1>4. SLA & Turnaround Commitments</h1>
+    <p>
+      Silver Point commits to the following operational performance targets for all orders received from Peecho B.V.:
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 25%;">Workflow Stage</th>
+          <th style="width: 25%;">Guaranteed SLA Limit</th>
+          <th style="width: 25%;">Typical Turnaround</th>
+          <th style="width: 25%;">Failover / Escalation Rule</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Webhook Ingestion ACK</strong></td>
+          <td><strong>&lt; 2.0 seconds</strong></td>
+          <td>180 ms – 350 ms</td>
+          <td>Async offloading to Redis queue; automatic worker scaling.</td>
+        </tr>
+        <tr>
+          <td><strong>S3 Download & Preflight</strong></td>
+          <td><strong>&lt; 15 minutes</strong></td>
+          <td>3 to 5 minutes</td>
+          <td>Worker retry with fallback mirror CDN connection.</td>
+        </tr>
+        <tr>
+          <td><strong>Standard Production Turnaround</strong></td>
+          <td><strong>24 to 48 Hours</strong></td>
+          <td>28.5 Hours</td>
+          <td>Dynamic re-routing across redundant presses (HP Indigo to Ricoh C9200).</td>
+        </tr>
+        <tr>
+          <td><strong>Express / Rush Turnaround</strong></td>
+          <td><strong>&lt; 24 Hours (Rush: 8H)</strong></td>
+          <td>12 to 14 Hours</td>
+          <td>Instant priority queue jump; dedicated finishing lane.</td>
+        </tr>
+        <tr>
+          <td><strong>Dispatch Sync Latency</strong></td>
+          <td><strong>&lt; 5.0 seconds</strong></td>
+          <td>1.2 seconds</td>
+          <td>Exponential retry backoff with local audit queue persistence.</td>
+        </tr>
+        <tr>
+          <td><strong>Daily Courier Handover</strong></td>
+          <td><strong>Same-Day Handover</strong></td>
+          <td>16:30 Daily Cutoff</td>
+          <td>Consolidated daily pickups by DHL, Aramex, and FedEx.</td>
+        </tr>
+        <tr>
+          <td><strong>First-Time QC Pass Rate</strong></td>
+          <td><strong>&ge; 99.2%</strong></td>
+          <td>99.6%</td>
+          <td>Automatic root-cause corrective action (RCCA) reporting.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ========================================================================
+       6. DOCUMENT AUTHORIZATION BLOCK
+       ======================================================================== -->
+  <section class="auth-section page-break-inside-avoid">
+    <h1>5. Document Authorization Block</h1>
+    <p>
+      By signing below, both parties endorse this Standard Operating Procedure as the official operational baseline governing all print production and dispatch activities between Silver Point Printing & Digital Solutions and Peecho B.V.
+    </p>
+
+    <div class="auth-grid">
+      <!-- Silver Point Sign-Off -->
+      <div class="auth-card">
+        <div class="auth-card-title">Silver Point Printing & Digital Solutions</div>
+        <div class="auth-line">
+          <span class="auth-line-label">Authorized Signatory Name:</span>
+          <strong>Minto Thomas</strong>
+        </div>
+        <div class="auth-line">
+          <span class="auth-line-label">Title / Designation:</span>
+          Head of Technology & POD Operations
+        </div>
+        <div class="auth-line">
+          <span class="auth-line-label">Date:</span>
+          ____ / ____ / 2026
+        </div>
+        <div class="auth-line-label">Authorized Signature:</div>
+        <div class="auth-signature-box">
+          [Digitally Approved on ORDERFLOW Platform]
+        </div>
+        <div class="stamp-box">
+          Official Corporate Stamp
+        </div>
+      </div>
+
+      <!-- Peecho B.V. Sign-Off -->
+      <div class="auth-card">
+        <div class="auth-card-title">Peecho B.V. (Netherlands)</div>
+        <div class="auth-line">
+          <span class="auth-line-label">Authorized Signatory Name:</span>
+          _____________________________________________
+        </div>
+        <div class="auth-line">
+          <span class="auth-line-label">Title / Designation:</span>
+          Head of Global Operations & Supply Chain
+        </div>
+        <div class="auth-line">
+          <span class="auth-line-label">Date:</span>
+          ____ / ____ / 2026
+        </div>
+        <div class="auth-line-label">Authorized Signature:</div>
+        <div class="auth-signature-box">
+          _____________________________________________
+        </div>
+        <div class="stamp-box">
+          Official Corporate Stamp
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="doc-footer">
+    <span>Silver Point POD Hub &bull; Document Reference: SP-PCH-SOP-2026-V1.0</span>
+    <span>Confidential &bull; Proprietary to Silver Point & Peecho B.V.</span>
+  </footer>
+
+</div>
+
+</body>
+</html>
+

@@ -66,10 +66,18 @@ class ProductionBatchViewSet(viewsets.ModelViewSet):
 
         data = serializer.validated_data
         order_ids = data["order_ids"]
-        orders_qs = Order.objects.filter(id__in=order_ids).prefetch_related("items")
+        orders_qs = Order.objects.filter(
+            id__in=order_ids,
+            is_sandbox=False,
+        ).exclude(
+            status__code="TEST_ORDER"
+        ).prefetch_related("items")
 
         if not orders_qs.exists():
-            return Response({"error": "No matching orders found for provided IDs."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "No valid production orders found. Test/Sandbox orders cannot be added to active production press queues."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # Generate unique batch number
         batch_count = ProductionBatch.objects.count() + 101
@@ -233,10 +241,14 @@ class ProductionBatchViewSet(viewsets.ModelViewSet):
     def eligible_orders(self, request):
         """
         GET /api/v1/production/batches/eligible-orders/
-        Returns verified orders ready to be grouped into production batches (excluding orders already assigned to a batch).
+        Returns verified production orders ready to be grouped into production batches
+        (excluding test/sandbox orders and orders already assigned to a batch).
         """
         orders = Order.objects.filter(
-            status__code__in=["PREPRESS_PASSED", "PREPRESS_QUEUED", "RECEIVED"]
+            status__code__in=["PREPRESS_PASSED", "PREPRESS_QUEUED", "RECEIVED"],
+            is_sandbox=False,
+        ).exclude(
+            status__code="TEST_ORDER"
         ).exclude(
             production_batches__isnull=False
         ).prefetch_related("items", "status")

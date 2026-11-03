@@ -95,6 +95,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "currency",
             "order_source",
             "is_external_pod",
+            "is_sandbox",
             "external_pod_order_id",
             "tracking_number",
             "peecho_metadata",
@@ -167,6 +168,7 @@ class PeechoPayloadLogSerializer(serializers.ModelSerializer):
             "payload_hash",
             "raw_payload",
             "status",
+            "is_sandbox",
             "error_message",
             "ip_address",
             "created_at",
@@ -179,6 +181,8 @@ class PeechoIntegrationConfigSerializer(serializers.ModelSerializer):
     secret_key_masked = serializers.SerializerMethodField()
     webhook_secret_masked = serializers.SerializerMethodField()
     full_webhook_url = serializers.SerializerMethodField()
+    production_webhook_url = serializers.SerializerMethodField()
+    staging_webhook_url = serializers.SerializerMethodField()
 
     class Meta:
         from apps.orders.models import PeechoIntegrationConfig
@@ -195,6 +199,8 @@ class PeechoIntegrationConfigSerializer(serializers.ModelSerializer):
             "webhook_secret_masked",
             "webhook_endpoint_path",
             "full_webhook_url",
+            "production_webhook_url",
+            "staging_webhook_url",
             "is_sandbox",
             "auto_sync_status_changes",
             "last_connection_test_at",
@@ -226,7 +232,24 @@ class PeechoIntegrationConfigSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if request:
             return request.build_absolute_uri(obj.webhook_endpoint_path)
-        return f"http://127.0.0.1:8001{obj.webhook_endpoint_path}"
+        from django.conf import settings
+        return getattr(settings, "PEECHO_PRODUCTION_WEBHOOK_URL", f"http://127.0.0.1:8001{obj.webhook_endpoint_path}")
+
+    def get_production_webhook_url(self, obj):
+        from django.conf import settings
+        return getattr(
+            settings,
+            "PEECHO_PRODUCTION_WEBHOOK_URL",
+            "https://orderflow.silverpointprint.com/api/v1/peecho/webhook/",
+        )
+
+    def get_staging_webhook_url(self, obj):
+        from django.conf import settings
+        return getattr(
+            settings,
+            "PEECHO_STAGING_WEBHOOK_URL",
+            "https://staging.orderflow.silverpointprint.com/api/v1/peecho/webhook/",
+        )
 
 
 class PrintifyPayloadLogSerializer(serializers.ModelSerializer):

@@ -53,16 +53,19 @@ def sync_shipment_to_peecho(shipment_id: str) -> dict:
     if not shipment.tracking_url:
         shipment.tracking_url = generate_carrier_tracking_url(shipment.carrier_code, shipment.tracking_number)
 
+    shipped_iso = (shipment.dispatched_at or timezone.now()).isoformat()
     payload = {
         "peecho_order_id": peecho_order_id,
         "silverpoint_order_number": order.order_number,
         "carrier": shipment.carrier_name,
         "carrier_code": shipment.carrier_code,
         "tracking_code": shipment.tracking_number,
+        "shipment_date": shipped_iso,
+        "shipped_at": shipped_iso,
         "tracking_url": shipment.tracking_url,
         "awb_url": shipment.awb_document_url or "",
-        "shipped_at": (shipment.dispatched_at or timezone.now()).isoformat(),
         "weight_in_grams": int(float(shipment.weight_kg) * 1000),
+        "is_sandbox": bool(getattr(order, "is_sandbox", False)),
         "notes": shipment.notes or "Dispatched from Silver Point POD Facility",
     }
 
@@ -77,8 +80,8 @@ def sync_shipment_to_peecho(shipment_id: str) -> dict:
     }
 
     try:
-        # In development/sandbox or if mock base URL, simulate 200 OK
-        if config.is_sandbox or getattr(settings, "DEBUG", False) or "sandbox" in config.api_key or "peecho.com" in api_url:
+        # In development/sandbox, for sandbox test orders, or if mock base URL, simulate 200 OK
+        if getattr(order, "is_sandbox", False) or config.is_sandbox or getattr(settings, "DEBUG", False) or "sandbox" in config.api_key or "peecho.com" in api_url:
             # Verified sandbox simulation
             sync_response = {
                 "status": "success",

@@ -147,6 +147,8 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
     "x-staff-role",
     "x-printify-signature",
     "x-peecho-signature",
+    "x-peecho-environment",
+    "x-sandbox-mode",
 ]
 
 
@@ -161,10 +163,26 @@ CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60
 CELERY_TASK_ALWAYS_EAGER = os.getenv("CELERY_ALWAYS_EAGER", "True") == "True"  # Eager fallback for development/testing
 
-# Peecho Integration Credentials
+# Peecho Integration Credentials & Webhook Routing
 PEECHO_API_BASE_URL = os.getenv("PEECHO_API_BASE_URL", "https://api.peecho.com")
 PEECHO_API_KEY = os.getenv("PEECHO_API_KEY", "sandbox_peecho_live_key_99812")
 PEECHO_WEBHOOK_SECRET = os.getenv("PEECHO_WEBHOOK_SECRET", "secret_peecho_sha256_hash_9012")
+PEECHO_PRODUCTION_WEBHOOK_URL = os.getenv(
+    "PEECHO_PRODUCTION_WEBHOOK_URL",
+    "https://orderflow.silverpointprint.com/api/v1/peecho/webhook/",
+)
+PEECHO_STAGING_WEBHOOK_URL = os.getenv(
+    "PEECHO_STAGING_WEBHOOK_URL",
+    "https://staging.orderflow.silverpointprint.com/api/v1/peecho/webhook/",
+)
+PEECHO_PRODUCTION_SECRET_KEY = os.getenv(
+    "PEECHO_PRODUCTION_SECRET_KEY",
+    os.getenv("PEECHO_WEBHOOK_SECRET", "prod_peecho_hmac_sha256_secret_2026"),
+)
+PEECHO_STAGING_SECRET_KEY = os.getenv(
+    "PEECHO_STAGING_SECRET_KEY",
+    "staging_peecho_hmac_sha256_secret_2026",
+)
 
 # Printify POD Integration Credentials
 PRINTIFY_API_TOKEN = os.getenv("PRINTIFY_API_TOKEN", "")

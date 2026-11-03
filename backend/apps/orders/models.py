@@ -61,6 +61,11 @@ class PeechoPayloadLog(models.Model):
         null=True,
         blank=True,
     )
+    is_sandbox = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="True if webhook was ingested via staging subdomain or sandbox secret key.",
+    )
     created_at = models.DateTimeField(
         auto_now_add=True,
         db_index=True,
@@ -117,6 +122,11 @@ class Order(BaseModel):
         default=False,
         db_index=True,
         help_text="Flag indicating if the order is routed to an external POD partner.",
+    )
+    is_sandbox = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="True if order arrived via staging subdomain or sandbox secret key (test order excluded from live press & billing).",
     )
     external_pod_order_id = models.CharField(
         max_length=128,
@@ -451,6 +461,11 @@ class PrintifyPayloadLog(models.Model):
     ip_address = models.GenericIPAddressField(
         null=True,
         blank=True,
+    )
+    is_sandbox = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="True if webhook was ingested via staging subdomain or sandbox secret key.",
     )
     created_at = models.DateTimeField(
         auto_now_add=True,
