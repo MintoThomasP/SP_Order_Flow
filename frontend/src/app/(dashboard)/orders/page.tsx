@@ -755,6 +755,15 @@ export default function OrdersPage() {
             </span>
           );
         }
+        if (src === "provider_api") {
+          const providerLabel = ord.peecho_metadata?.provider_code || "Provider API";
+          return (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+              <Cpu className="w-3 h-3 text-indigo-600" />
+              {providerLabel}
+            </span>
+          );
+        }
         if (src === "custom_api" || src === "custom") {
           return (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200">
@@ -1246,6 +1255,7 @@ export default function OrdersPage() {
                 <option value="ALL">All Channels</option>
                 <option value="printify">Printify POD</option>
                 <option value="peecho">Peecho POD</option>
+                <option value="provider_api">Service Provider API</option>
                 <option value="custom_api">Custom B2B API</option>
                 <option value="manual">In-House Manual</option>
               </select>
@@ -2161,7 +2171,9 @@ export default function OrdersPage() {
                     <p className="text-[11px] text-slate-400 font-medium">Origin Channel:</p>
                     <div className="mt-1 flex items-center gap-1.5">
                       <span className="font-semibold text-slate-800 capitalize">
-                        {selectedOrder.order_source || "Peecho"}
+                        {selectedOrder.order_source === "provider_api"
+                          ? selectedOrder.peecho_metadata?.provider_code || "Service Provider API"
+                          : selectedOrder.order_source || "Peecho"}
                       </span>
                       {selectedOrder.is_external_pod && (
                         <span className="text-[10px] text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded font-mono">

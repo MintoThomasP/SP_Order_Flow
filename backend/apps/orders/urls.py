@@ -21,13 +21,29 @@ from apps.orders.views_printify import (
     PrintifyRegisterWebhooksView,
     PrintifySimulateWebhookView,
 )
+from apps.orders.views_provider import (
+    ProviderOrderPushView,
+    ProviderOrderStatusPushView,
+    ProviderIngestionLogViewSet,
+    ServiceProviderViewSet,
+)
 
 router = DefaultRouter()
 router.register(r"orders", OrderViewSet, basename="orders")
 router.register(r"peecho/logs", PeechoPayloadLogViewSet, basename="peecho-logs")
 router.register(r"printify/logs", PrintifyPayloadLogViewSet, basename="printify-logs")
+router.register(r"providers/logs", ProviderIngestionLogViewSet, basename="provider-logs")
+router.register(r"providers/channels", ServiceProviderViewSet, basename="provider-channels")
 
 urlpatterns = [
+    # Common Service Provider Push API (Inbound Order & Status/Tracking Push)
+    path("providers/orders/", ProviderOrderPushView.as_view(), name="provider-order-push"),
+    path("providers/orders/status/", ProviderOrderStatusPushView.as_view(), name="provider-order-status-push"),
+    path(
+        "providers/orders/<str:external_order_id>/status/",
+        ProviderOrderStatusPushView.as_view(),
+        name="provider-order-status-push-by-id",
+    ),
     # Printify Inbound Webhook Listener
     path("webhooks/printify/", PrintifyWebhookView.as_view(), name="printify-webhook"),
 

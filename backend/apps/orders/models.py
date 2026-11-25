@@ -1,11 +1,355 @@
 """
 POD Orders, Items, SLA Deadlines, and Peecho Webhook Ingestion Log Models.
 """
+import hashlib
+import hmac
+import secrets
 import uuid
 from decimal import Decimal
 from django.db import models
 from apps.core.models.base import BaseModel
 from apps.core.models.lookups import EntityStatus
+
+
+class ServiceProvider(BaseModel):
+    """
+    External Service Provider / Partner registered to push orders and status updates
+    into Silver Point POD via the Common Provider Push API.
+    """
+    provider_code = models.CharField(
+        max_length=64,
+        unique=True,
+        db_index=True,
+        help_text="Unique uppercase provider identifier (e.g., PRINTEMIRATES, ACME_PRINT).",
+    )
+    name = models.CharField(
+        max_length=255,
+        help_text="Human-readable partner / service provider name.",
+    )
+    api_token_prefix = models.CharField(
+        max_length=16,
+        blank=True,
+        db_index=True,
+        help_text="Legacy single-token prefix (kept for backwards compatibility).",
+    )
+    api_token_hash = models.CharField(
+        max_length=128,
+        blank=True,
+        db_index=True,
+        help_text="Legacy single-token SHA-256 hash (kept for backwards compatibility).",
+    )
+    test_api_key_prefix = models.CharField(
+        max_length=16,
+        blank=True,
+        db_index=True,
+        help_text="Prefix of the Test/Sandbox API key (sp_test_...).",
+    )
+    test_api_key_last4 = models.CharField(
+        max_length=8,
+        blank=True,
+        help_text="Last 4 characters of the Test/Sandbox API key for display.",
+    )
+    test_api_key_hash = models.CharField(
+        max_length=128,
+        blank=True,
+        db_index=True,
+        help_text="SHA-256 hex digest of the Test/Sandbox API key.",
+    )
+    test_key_rotated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="UTC timestamp when the Test/Sandbox API key was last generated or rotated.",
+    )
+    test_api_key_encrypted = models.TextField(
+        blank=True,
+        default="",
+        help_text="Encrypted-at-rest Test/Sandbox API key for authorized partner PDF export.",
+    )
+    live_api_key_prefix = models.CharField(
+        max_length=16,
+        blank=True,
+        db_index=True,
+        help_text="Prefix of the Production/Live API key (sp_live_...).",
+    )
+    live_api_key_last4 = models.CharField(
+        max_length=8,
+        blank=True,
+        help_text="Last 4 characters of the Production/Live API key for display.",
+    )
+    live_api_key_hash = models.CharField(
+        max_length=128,
+        blank=True,
+        db_index=True,
+        help_text="SHA-256 hex digest of the Production/Live API key.",
+    )
+    live_key_rotated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="UTC timestamp when the Production/Live API key was last generated or rotated.",
+    )
+    live_api_key_encrypted = models.TextField(
+        blank=True,
+        default="",
+        help_text="Encrypted-at-rest Production/Live API key for authorized partner PDF export.",
+    )
+    webhook_secret = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Shared secret for HMAC-SHA256 X-Provider-Signature verification.",
+    )
+    require_hmac = models.BooleanField(
+        default=False,
+        help_text="If True, every request must include a valid X-Provider-Signature HMAC-SHA256 header.",
+    )
+    is_sandbox_default = models.BooleanField(
+        default=False,
+        help_text="If True, orders from this provider default to sandbox/test mode.",
+    )
+    is_external_pod_default = models.BooleanField(
+        default=False,
+        help_text="Default value for Order.is_external_pod on pushed orders (False = fulfilled in-house).",
+    )
+    default_currency = models.CharField(
+        max_length=8,
+        default="USD",
+    )
+    default_carrier = models.CharField(
+        max_length=64,
+        default="DHL Express",
+    )
+    allowed_ips = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Optional list of allowlisted client IP addresses.",
+    )
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Provider-specific onboarding configuration or notes.",
+    )
+
+    class Meta:
+        verbose_name = "Service Provider"
+        verbose_name_plural = "Service Providers"
+        ordering = ["provider_code"]
+
+    @staticmethod
+    def hash_token(raw_token: str) -> str:
+        return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+    def set_api_token(self, raw_token: str) -> None:
+        self.api_token_prefix = raw_token[:12]
+        self.api_token_hash = self.hash_token(raw_token)
+
+    def set_test_api_key(self, raw_token: str) -> None:
+        from django.utils import timezone
+        from apps.orders.services.key_crypto import encrypt_provider_key
+        self.test_api_key_prefix = raw_token[:12]
+        self.test_api_key_last4 = raw_token[-4:] if len(raw_token) >= 4 else raw_token
+        self.test_api_key_hash = self.hash_token(raw_token)
+        self.test_api_key_encrypted = encrypt_provider_key(raw_token)
+        self.test_key_rotated_at = timezone.now()
+
+    def set_live_api_key(self, raw_token: str) -> None:
+        from django.utils import timezone
+        from apps.orders.services.key_crypto import encrypt_provider_key
+        self.live_api_key_prefix = raw_token[:12]
+        self.live_api_key_last4 = raw_token[-4:] if len(raw_token) >= 4 else raw_token
+        self.live_api_key_hash = self.hash_token(raw_token)
+        self.live_api_key_encrypted = encrypt_provider_key(raw_token)
+        self.live_key_rotated_at = timezone.now()
+
+    def get_decrypted_test_key(self) -> str:
+        from apps.orders.services.key_crypto import decrypt_provider_key
+        return decrypt_provider_key(self.test_api_key_encrypted)
+
+    def get_decrypted_live_key(self) -> str:
+        from apps.orders.services.key_crypto import decrypt_provider_key
+        return decrypt_provider_key(self.live_api_key_encrypted)
+
+    def resolve_token_environment(self, raw_token: str):
+        """
+        Verifies raw_token against Test, Live, or legacy token hashes using constant-time comparison.
+        Returns 'sandbox', 'production', or None if invalid.
+        """
+        if not raw_token:
+            return None
+        candidate_hash = self.hash_token(raw_token)
+        if self.test_api_key_hash and hmac.compare_digest(self.test_api_key_hash, candidate_hash):
+            return "sandbox"
+        if self.live_api_key_hash and hmac.compare_digest(self.live_api_key_hash, candidate_hash):
+            return "production"
+        if self.api_token_hash and hmac.compare_digest(self.api_token_hash, candidate_hash):
+            return "sandbox" if self.is_sandbox_default else "production"
+        return None
+
+    def verify_api_token(self, raw_token: str) -> bool:
+        return self.resolve_token_environment(raw_token) is not None
+
+    def rotate_test_key(self, save: bool = True) -> str:
+        """Independently generates/rotates the Test/Sandbox API key (sp_test_...)."""
+        raw_test = f"sp_test_{secrets.token_hex(24)}"
+        self.set_test_api_key(raw_test)
+        if save:
+            self.save(
+                update_fields=[
+                    "test_api_key_prefix",
+                    "test_api_key_last4",
+                    "test_api_key_hash",
+                    "test_api_key_encrypted",
+                    "test_key_rotated_at",
+                    "updated_at",
+                ]
+            )
+        return raw_test
+
+    def rotate_live_key(self, save: bool = True) -> str:
+        """Independently generates/rotates the Production/Live API key (sp_live_...)."""
+        raw_live = f"sp_live_{secrets.token_hex(24)}"
+        self.set_live_api_key(raw_live)
+        if save:
+            self.save(
+                update_fields=[
+                    "live_api_key_prefix",
+                    "live_api_key_last4",
+                    "live_api_key_hash",
+                    "live_api_key_encrypted",
+                    "live_key_rotated_at",
+                    "updated_at",
+                ]
+            )
+        return raw_live
+
+    def generate_credentials(self, save: bool = True) -> dict:
+        """
+        Generates fresh Test (sp_test_...) and Production (sp_live_...) API keys
+        plus an HMAC webhook secret. Returns raw credentials once for onboarding.
+        """
+        raw_test = self.rotate_test_key(save=False)
+        raw_live = self.rotate_live_key(save=False)
+        raw_secret = f"sp_hmac_{secrets.token_hex(32)}"
+        self.webhook_secret = raw_secret
+        if save:
+            self.save(
+                update_fields=[
+                    "test_api_key_prefix",
+                    "test_api_key_last4",
+                    "test_api_key_hash",
+                    "test_api_key_encrypted",
+                    "test_key_rotated_at",
+                    "live_api_key_prefix",
+                    "live_api_key_last4",
+                    "live_api_key_hash",
+                    "live_api_key_encrypted",
+                    "live_key_rotated_at",
+                    "webhook_secret",
+                    "updated_at",
+                ]
+            )
+        return {
+            "provider_code": self.provider_code,
+            "test_api_key": raw_test,
+            "live_api_key": raw_live,
+            "api_token": raw_live,
+            "webhook_secret": raw_secret,
+        }
+
+    def save(self, *args, **kwargs):
+        if self.provider_code:
+            self.provider_code = self.provider_code.strip().upper()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.name} ({self.provider_code})"
+
+
+class ProviderIngestionLog(models.Model):
+    """
+    Immutable audit log of all incoming requests to the Common Provider Push API.
+    """
+    STATUS_CHOICES = [
+        ("RECEIVED", "Received"),
+        ("PROCESSED", "Processed & Ingested"),
+        ("DUPLICATE", "Duplicate Skipped"),
+        ("INVALID_AUTH", "Invalid Credentials / Signature"),
+        ("PROVIDER_MISMATCH", "Provider Code Mismatch"),
+        ("VALIDATION_ERROR", "Payload Validation Error"),
+        ("CONFLICT", "Idempotency Conflict"),
+        ("FAILED", "Ingestion Failed"),
+    ]
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+    provider = models.ForeignKey(
+        ServiceProvider,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ingestion_logs",
+    )
+    provider_code = models.CharField(
+        max_length=64,
+        db_index=True,
+        blank=True,
+    )
+    external_order_id = models.CharField(
+        max_length=128,
+        db_index=True,
+        blank=True,
+    )
+    idempotency_key = models.CharField(
+        max_length=128,
+        db_index=True,
+        blank=True,
+    )
+    event_type = models.CharField(
+        max_length=64,
+        default="order.created",
+        db_index=True,
+    )
+    payload_hash = models.CharField(
+        max_length=64,
+        db_index=True,
+        blank=True,
+    )
+    raw_payload = models.JSONField(
+        default=dict,
+    )
+    status = models.CharField(
+        max_length=32,
+        choices=STATUS_CHOICES,
+        default="RECEIVED",
+        db_index=True,
+    )
+    http_status = models.PositiveSmallIntegerField(
+        default=200,
+    )
+    error_message = models.TextField(
+        blank=True,
+    )
+    ip_address = models.GenericIPAddressField(
+        null=True,
+        blank=True,
+    )
+    is_sandbox = models.BooleanField(
+        default=False,
+        db_index=True,
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+    )
+
+    class Meta:
+        verbose_name = "Provider Ingestion Log"
+        verbose_name_plural = "Provider Ingestion Logs"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Provider Log [{self.provider_code or 'UNKNOWN'} / {self.external_order_id or 'N/A'}] - {self.status}"
 
 
 class PeechoPayloadLog(models.Model):
@@ -108,9 +452,18 @@ class Order(BaseModel):
     ORDER_SOURCE_CHOICES = [
         ("peecho", "Peecho POD"),
         ("printify", "Printify POD"),
+        ("provider_api", "Service Provider Push API"),
         ("custom_api", "Custom POD / REST API"),
         ("manual", "Internal / Manual"),
     ]
+    service_provider = models.ForeignKey(
+        ServiceProvider,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="orders",
+        help_text="External service provider that pushed this order via the Common Provider Push API.",
+    )
     order_source = models.CharField(
         max_length=32,
         choices=ORDER_SOURCE_CHOICES,
@@ -203,6 +556,13 @@ class Order(BaseModel):
         verbose_name = "POD Order"
         verbose_name_plural = "POD Orders"
         ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["service_provider", "external_pod_order_id"],
+                condition=models.Q(service_provider__isnull=False, external_pod_order_id__isnull=False),
+                name="unique_provider_external_order_id",
+            )
+        ]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

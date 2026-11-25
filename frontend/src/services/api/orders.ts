@@ -326,5 +326,105 @@ export const ordersApi = {
     });
     return res.data;
   },
+
+  // -------------------------------------------------------------
+  // Common Service Provider / Channel Push API Management
+  // -------------------------------------------------------------
+  getProviderChannels: async (): Promise<{
+    count?: number;
+    results?: ServiceProviderChannel[];
+  } | ServiceProviderChannel[]> => {
+    const res = await apiClient.get("/providers/channels/");
+    return res.data;
+  },
+
+  createProviderChannel: async (payload: {
+    name: string;
+    provider_code: string;
+    default_currency?: string;
+    default_carrier?: string;
+    require_hmac?: boolean;
+  }): Promise<{
+    message: string;
+    channel: ServiceProviderChannel;
+    credentials: {
+      provider_code: string;
+      test_api_key: string;
+      live_api_key: string;
+      webhook_secret: string;
+    };
+  }> => {
+    const res = await apiClient.post("/providers/channels/", payload);
+    return res.data;
+  },
+
+  updateProviderChannel: async (
+    id: string,
+    payload: Partial<Pick<ServiceProviderChannel, "name" | "is_active" | "require_hmac" | "default_currency" | "default_carrier">>
+  ): Promise<ServiceProviderChannel> => {
+    const res = await apiClient.patch<ServiceProviderChannel>(`/providers/channels/${id}/`, payload);
+    return res.data;
+  },
+
+  rotateProviderKey: async (
+    id: string,
+    environment: "test" | "live" | "both"
+  ): Promise<{
+    message: string;
+    environment: string;
+    channel: ServiceProviderChannel;
+    credentials: {
+      test_api_key?: string;
+      live_api_key?: string;
+    };
+  }> => {
+    const res = await apiClient.post(`/providers/channels/${id}/rotate-key/`, { environment });
+    return res.data;
+  },
+
+  getProviderIngestionLogs: async (params?: { page?: number; page_size?: number }): Promise<any> => {
+    const res = await apiClient.get("/providers/logs/", { params });
+    return res.data;
+  },
+
+  downloadProviderDocumentationPdf: async (
+    id: string,
+    options: { include_test_key: boolean; include_production_key: boolean }
+  ): Promise<Blob> => {
+    const res = await apiClient.get(`/providers/channels/${id}/documentation-pdf/`, {
+      params: options,
+      responseType: "blob",
+    });
+    return res.data;
+  },
 };
+
+export interface ServiceProviderChannel {
+  id: string;
+  provider_code: string;
+  name: string;
+  is_active: boolean;
+  require_hmac: boolean;
+  is_sandbox_default: boolean;
+  is_external_pod_default: boolean;
+  default_currency: string;
+  default_carrier: string;
+  test_api_key_prefix: string;
+  test_api_key_last4: string;
+  test_api_key_masked: string;
+  has_encrypted_test_key?: boolean;
+  test_key_rotated_at: string | null;
+  live_api_key_prefix: string;
+  live_api_key_last4: string;
+  live_api_key_masked: string;
+  has_encrypted_live_key?: boolean;
+  live_key_rotated_at: string | null;
+  webhook_secret_masked: string;
+  orders_count: number;
+  test_orders_count: number;
+  live_orders_count: number;
+  last_ingested_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
 

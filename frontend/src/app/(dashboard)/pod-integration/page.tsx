@@ -44,6 +44,7 @@ import { Table, Column } from "@/components/ui/table";
 import { StatCard } from "@/components/ui/stat-card";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/context/notification-context";
+import { ProviderChannelsPanel } from "@/components/integrations/provider-channels-panel";
 
 type PODChannel = "printify" | "peecho" | "custom";
 
@@ -1677,55 +1678,7 @@ export default function PODIntegrationsPage() {
       {/* =======================================================================
           TAB 3: CUSTOM POD GATEWAY
           ======================================================================= */}
-      {selectedChannel === "custom" && (
-        <div className="p-8 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-6">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-purple-50 border border-purple-200 flex items-center justify-center text-purple-600">
-              <Cpu className="w-6 h-6" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">Custom POD REST & Cloudprinter Gateway</h2>
-              <p className="text-xs text-slate-500">
-                Connect proprietary ERP systems, web-to-print portals, or enterprise print APIs using standard OpenAPI v3 specifications.
-              </p>
-            </div>
-          </div>
-
-          <div className="p-6 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-4 text-xs">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="font-semibold text-slate-700">OpenAPI 3.0 Documentation</label>
-                <a
-                  href="http://127.0.0.1:8000/api/docs/swagger/"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="h-10 px-3.5 rounded-xl bg-white border border-slate-200 text-[#0073EA] hover:underline flex items-center justify-between font-medium"
-                >
-                  <span>Open Interactive Swagger Docs</span>
-                  <ExternalLink className="w-4 h-4" />
-                </a>
-              </div>
-              <div className="space-y-1">
-                <label className="font-semibold text-slate-700">REST Ingestion Endpoint</label>
-                <div className="h-10 px-3.5 rounded-xl bg-white border border-slate-200 text-slate-800 flex items-center font-mono">
-                  POST /api/v1/orders/ingest/
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-xl bg-purple-50 border border-purple-200 text-purple-800 flex items-center justify-between">
-              <div>
-                <span className="font-bold">Enterprise API Enabled:</span> Use your API bearer tokens or API key headers to stream orders directly into the prepress queue.
-              </div>
-              <a href="http://127.0.0.1:8000/api/docs/swagger/" target="_blank" rel="noreferrer">
-                <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-white shrink-0">
-                  View API Specs
-                </Button>
-              </a>
-            </div>
-          </div>
-        </div>
-      )}
+      {selectedChannel === "custom" && <ProviderChannelsPanel />}
 
       {/* =======================================================================
           MODAL: VIEW PRINTIFY RAW JSON PAYLOAD

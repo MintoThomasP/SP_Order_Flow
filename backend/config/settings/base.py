@@ -149,6 +149,10 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
     "x-peecho-signature",
     "x-peecho-environment",
     "x-sandbox-mode",
+    "x-api-key",
+    "x-provider-code",
+    "x-provider-signature",
+    "idempotency-key",
 ]
 
 
