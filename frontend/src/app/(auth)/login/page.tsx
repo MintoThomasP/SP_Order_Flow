@@ -251,43 +251,6 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Development Test Accounts (1-click fill matching sample screenshot) */}
-          <div className="pt-5 border-t border-slate-100 space-y-3">
-            <div className="flex items-center justify-between text-xs font-semibold text-slate-800">
-              <div className="flex items-center gap-1.5 text-amber-500">
-                <Sparkles className="w-3.5 h-3.5 fill-current" />
-                <span className="text-slate-700 font-bold">Demo Test Accounts</span>
-              </div>
-              <span className="text-[11px] text-slate-400 font-normal">1-click fill</span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              {testAccounts.map((acc) => {
-                const isSelected = email === acc.email;
-                return (
-                  <button
-                    key={acc.email}
-                    type="button"
-                    onClick={() => handleSelectAccount(acc)}
-                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1 ${
-                      isSelected
-                        ? "border-[#0073EA] bg-blue-50/50 shadow-2xs ring-1 ring-[#0073EA]/30"
-                        : "border-slate-200/90 bg-white hover:bg-slate-50 hover:border-slate-300"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-slate-800 text-[11px] truncate">{acc.role}</span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${acc.badgeStyle}`}>
-                        {acc.badge}
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-slate-400 font-mono truncate">{acc.email}</p>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
         </div>
       </div>
     </div>
